@@ -2,13 +2,6 @@
 
 > Claude Code lo lee automáticamente al iniciar en este repo.
 > Se versiona: es conocimiento del equipo, no configuración personal.
->
-> **Fuente canónica:** *Norma de Estructura de Repositorios, Control de Versiones y Evaluación —
-> Sistemas Distribuidos 2026-B* (docente Jesús Ariel González Bonilla, CORHUILA) y sus anexos A–I;
-> fuente de verdad del proyecto: `code-corhuila/barber-saas-docs`. Este archivo resume las reglas
-> que aplican a este repo; ante cualquier diferencia prevalece la norma (numeral 1.2). Las
-> decisiones PENDIENTE (lenguaje, motor, migraciones, framework) se registran como ADR en
-> `barber-saas-docs/05-architecture/decisions/records/`.
 
 ## Tu rol aquí
 
@@ -23,18 +16,6 @@ Si encontrás algo fuera de alcance que parece importante — un bug, una incons
 mejora obvia — **no lo arregles**. Anotalo en la sección "Hallazgos" de tu reporte y seguí.
 
 ## Regla de Git — autorización obligatoria (no negociable)
-
-**Prohibido siempre, aun con autorización** (Norma 2026-B; no hay excepción que las habilite):
-- commit directo a `develop`, `qa` o `main` (6.2.2) — todo entra por rama hija y Pull Request;
-- merge de una rama permanente en otra, como `develop` → `qa` o `qa` → `main` (6.2.4, falta grave 13.1);
-- reescribir historial publicado: `push --force`, rebase de una rama compartida (9.6, falta grave 13.6);
-- modificar o borrar `.github/CODEOWNERS` o las reglas de protección (falta grave 13.7);
-- versionar `.env`, claves o tokens (falta grave 13.5).
-
-**La promoción** a `qa` o `main` se hace solo por re-aplicación: rama hija cortada del destino
-(`qa/…`, `release/x.y.z`, `hotfix/…`) y `git cherry-pick -x <sha>`, nunca por merge (10.1–10.3).
-
-Todo lo demás que escriba en Git requiere autorización:
 
 **Nunca ejecutes, sin que el usuario que opera la sesión lo autorice explícitamente en ese momento puntual, ninguna
 acción que escriba o reescriba el historial del repo**: `git commit`, `git push`, `git merge`,
