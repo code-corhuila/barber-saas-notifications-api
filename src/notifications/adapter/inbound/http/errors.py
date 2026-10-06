@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from notifications.adapter.inbound.http.correlation import correlation_id
-from notifications.domain.model.errors import DomainError, NotificationNotFound
+from notifications.domain.model.errors import DomainError, InvalidEvent, NotificationNotFound, UnsupportedEvent
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +55,10 @@ def _field(location: tuple) -> str:
 def _domain_error(error: DomainError) -> ApiError:
     if isinstance(error, NotificationNotFound):
         return ApiError.not_found("The notification does not exist")
+    if isinstance(error, UnsupportedEvent):
+        return ApiError(422, "BUSINESS_RULE_VIOLATION", f"This service does not handle the event {error}")
+    if isinstance(error, InvalidEvent):
+        return ApiError.validation([{"field": error.field, "message": error.problem}], "The event is not valid")
     log.error("unmapped domain error %s", type(error).__name__)
     return ApiError(500, "INTERNAL_ERROR", "Internal server error")
 
@@ -67,7 +71,7 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def domain_error(_: Request, error: DomainError) -> JSONResponse:
         mapped = _domain_error(error)
-        return envelope(mapped.status, mapped.code, mapped.message)
+        return envelope(mapped.status, mapped.code, mapped.message, mapped.details)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_: Request, error: RequestValidationError) -> JSONResponse:
