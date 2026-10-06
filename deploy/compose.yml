@@ -1,0 +1,31 @@
+# This service only. barber-saas-infra-postgres includes this file to compose the platform.
+services:
+  notifications-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: "8080"
+      # Only the public half: this service validates tokens, it never signs them.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run barber-saas-infra-postgres/scripts/dev-keys.sh}
+      HTTP_KEEP_ALIVE_TIMEOUT_S: "5"
+      HTTP_GRACEFUL_SHUTDOWN_S: "10"
+      HTTP_MAX_CONCURRENCY: "200"
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    # expose, not ports: only the gateway is reachable from the host.
+    expose: ["8080"]
+    networks: [platform]
+
+networks:
+  platform:
+    name: platform
+    external: true
