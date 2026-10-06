@@ -148,3 +148,15 @@ def test_marking_as_read_answers_the_notification_twice(client, add_notification
 
     assert first.status_code == second.status_code == 200
     assert first.json()["read"] is True and first.json() == second.json()
+
+
+def test_an_unexpected_failure_answers_500_without_its_detail(client, services, monkeypatch):
+    def broken(*_):
+        raise RuntimeError("connection refused by mongo-internal:27017")
+    monkeypatch.setattr(services.notifications, "list_mine", broken)
+
+    response = client.get(INBOX, headers={**bearer(make_token()), "X-Correlation-Id": "trace-500"})
+
+    body = assert_envelope(response, 500, "INTERNAL_ERROR")
+    assert body["traceId"] == "trace-500" and "mongo" not in response.text
+    assert response.headers["X-Correlation-Id"] == "trace-500"
