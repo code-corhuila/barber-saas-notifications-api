@@ -11,3 +11,16 @@ class InvalidNotification(DomainError):
 
 class NotificationNotFound(DomainError):
     """No notification with that id for this user — another user's one does not exist for them."""
+
+
+class UnsupportedEvent(DomainError):
+    """An event type this service does not handle; the worker marks it failed instead of retrying."""
+
+
+class InvalidEvent(DomainError):
+    """An event whose payload lacks what its notification needs."""
+
+    def __init__(self, field: str, problem: str) -> None:
+        super().__init__(f"{field} {problem}")
+        self.field = field
+        self.problem = problem
