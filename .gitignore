@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.import_linter_cache/
+
+# Local configuration and secrets: only .env.example is versioned
+.env
+.env.*
+!.env.example
+*.pem
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
