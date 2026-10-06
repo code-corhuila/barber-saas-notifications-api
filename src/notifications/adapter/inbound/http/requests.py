@@ -1,6 +1,6 @@
 """Request bodies, validated at the edge; field names follow the contract (camelCase)."""
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,3 +20,12 @@ class EventEnvelopeBody(BaseModel):
     barbershopId: UUID | None = None
     correlationId: str
     payload: dict[str, Any]
+
+
+class RegisterDeviceTokenBody(BaseModel):
+    """RegisterDeviceTokenRequest: additionalProperties false."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=4096)
+    platform: Literal["ANDROID", "IOS"]
