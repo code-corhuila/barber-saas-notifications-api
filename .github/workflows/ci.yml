@@ -1,0 +1,31 @@
+name: CI
+
+# Every Pull Request installs the service and runs its tests on a clean machine.
+# "It works on my computer" is not evidence; a green check here is.
+
+on:
+  pull_request:
+    branches: [develop, qa, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -e '.[dev]'
+      # The architecture rule: the domain and the application import no framework or driver.
+      - run: lint-imports
+      - run: pytest
