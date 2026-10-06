@@ -24,3 +24,7 @@ class InvalidEvent(DomainError):
         super().__init__(f"{field} {problem}")
         self.field = field
         self.problem = problem
+
+
+class IdempotencyConflict(DomainError):
+    """An Idempotency-Key already used for a different request."""
