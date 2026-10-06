@@ -14,6 +14,13 @@ class InMemoryNotificationRepository:
         with self._lock:
             self._by_id[notification.id] = notification
 
+    def add_unless_seen(self, notification: Notification) -> bool:
+        with self._lock:
+            if any(n.source_event_id == notification.source_event_id for n in self._by_id.values()):
+                return False
+            self._by_id[notification.id] = notification
+            return True
+
     def save(self, notification: Notification) -> None:
         with self._lock:
             self._by_id[notification.id] = notification
