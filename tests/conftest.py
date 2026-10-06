@@ -11,8 +11,10 @@ from fastapi.testclient import TestClient
 
 from notifications.adapter.inbound.http.app import Services, create_app
 from notifications.adapter.inbound.http.auth import Rs256Verifier
-from notifications.adapter.outbound.persistence.in_memory import InMemoryNotificationRepository
+from notifications.adapter.outbound.persistence.in_memory import (InMemoryDeviceTokenRepository,
+                                                                  InMemoryNotificationRepository)
 from notifications.adapter.outbound.system import RandomIds
+from notifications.application.usecase.device_token_service import DeviceTokenService
 from notifications.application.usecase.event_service import EventService
 from notifications.application.usecase.notification_service import NotificationService
 from notifications.domain.model.notification import Notification, NotificationType
@@ -81,7 +83,8 @@ def add_notification(notifications) -> Callable[..., Notification]:
 @pytest.fixture
 def services(notifications, clock) -> Services:
     return Services(notifications=NotificationService(notifications, clock),
-                    events=EventService(notifications, clock, RandomIds()))
+                    events=EventService(notifications, clock, RandomIds()),
+                    device_tokens=DeviceTokenService(InMemoryDeviceTokenRepository(), clock, RandomIds()))
 
 
 @pytest.fixture
