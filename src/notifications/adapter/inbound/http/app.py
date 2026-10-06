@@ -7,6 +7,7 @@ from notifications.adapter.inbound.http import errors
 from notifications.adapter.inbound.http.auth import Rs256Verifier
 from notifications.adapter.inbound.http.correlation import CorrelationMiddleware
 from notifications.adapter.inbound.http.router import router
+from notifications.application.port.inbound.device_token_use_cases import DeviceTokenUseCases
 from notifications.application.port.inbound.event_use_cases import EventUseCases
 from notifications.application.port.inbound.notification_use_cases import NotificationUseCases
 
@@ -15,6 +16,7 @@ from notifications.application.port.inbound.notification_use_cases import Notifi
 class Services:
     notifications: NotificationUseCases
     events: EventUseCases
+    device_tokens: DeviceTokenUseCases
 
 
 def create_app(services: Services, verifier: Rs256Verifier) -> FastAPI:
