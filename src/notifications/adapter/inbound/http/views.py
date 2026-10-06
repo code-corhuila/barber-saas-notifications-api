@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from notifications.application.port.inbound.notification_use_cases import Page
+from notifications.domain.model.device_token import DeviceToken
 from notifications.domain.model.notification import Notification
 
 
@@ -29,4 +30,15 @@ def page(result: Page[Notification]) -> dict:
         "data": [notification(n) for n in result.items],
         "meta": {"page": result.page, "limit": result.limit, "total": result.total,
                  "totalPages": result.total_pages},
+    }
+
+
+def device_token(d: DeviceToken) -> dict:
+    return {
+        "id": str(d.id),
+        "userId": str(d.user_id),
+        "token": d.token,
+        "platform": d.platform.value,
+        "createdAt": timestamp(d.created_at),
+        "updatedAt": timestamp(d.updated_at),
     }
