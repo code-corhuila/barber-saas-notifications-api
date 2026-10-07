@@ -16,6 +16,8 @@ from notifications.adapter.inbound.http.auth import Rs256Verifier
 from notifications.adapter.inbound.http.correlation import JsonFormatter
 from notifications.adapter.outbound.persistence.in_memory import (InMemoryDeviceTokenRepository,
                                                                   InMemoryNotificationRepository)
+from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository,
+                                                              MongoNotificationRepository, connect)
 from notifications.adapter.outbound.system import RandomIds, UtcClock
 from notifications.application.usecase.device_token_service import DeviceTokenService
 from notifications.application.usecase.event_service import EventService
@@ -34,6 +36,13 @@ class Settings:
     graceful_shutdown_s: int = 10
     # Above this many concurrent connections the server answers 503 instead of queueing.
     max_concurrency: int = 200
+    # Empty: in-memory repositories (nothing survives a restart). Set: MongoDB as notifications_app.
+    mongo_url: str = ""
+    mongo_database: str = "notifications"
+    mongo_pool_max: int = 10
+    # Each operation, and the wait for a pooled connection, ends after this many milliseconds.
+    mongo_timeout_ms: int = 5000
+    mongo_server_selection_timeout_ms: int = 3000
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -43,16 +52,29 @@ class Settings:
                    port=number("PORT", cls.port),
                    keep_alive_timeout_s=number("HTTP_KEEP_ALIVE_TIMEOUT_S", cls.keep_alive_timeout_s),
                    graceful_shutdown_s=number("HTTP_GRACEFUL_SHUTDOWN_S", cls.graceful_shutdown_s),
-                   max_concurrency=number("HTTP_MAX_CONCURRENCY", cls.max_concurrency))
+                   max_concurrency=number("HTTP_MAX_CONCURRENCY", cls.max_concurrency),
+                   mongo_url=env.get("MONGO_URL", ""),
+                   mongo_database=env.get("MONGO_DATABASE") or cls.mongo_database,
+                   mongo_pool_max=number("MONGO_POOL_MAX", cls.mongo_pool_max),
+                   mongo_timeout_ms=number("MONGO_TIMEOUT_MS", cls.mongo_timeout_ms),
+                   mongo_server_selection_timeout_ms=number("MONGO_SERVER_SELECTION_TIMEOUT_MS",
+                                                            cls.mongo_server_selection_timeout_ms))
 
 
 def build_app(settings: Settings) -> FastAPI:
     clock, ids = UtcClock(), RandomIds()
-    # In memory until barber-saas-infra-mongo is reachable (N-4): nothing survives a restart.
-    notifications = InMemoryNotificationRepository()
+    if settings.mongo_url:
+        client = connect(settings.mongo_url, pool_max=settings.mongo_pool_max, timeout_ms=settings.mongo_timeout_ms,
+                         server_selection_timeout_ms=settings.mongo_server_selection_timeout_ms)
+        database = client[settings.mongo_database]
+        notifications = MongoNotificationRepository(database)
+        devices = MongoDeviceTokenRepository(client, database)
+    else:
+        notifications = InMemoryNotificationRepository()
+        devices = InMemoryDeviceTokenRepository()
     services = Services(notifications=NotificationService(notifications, clock),
                         events=EventService(notifications, clock, ids),
-                        device_tokens=DeviceTokenService(InMemoryDeviceTokenRepository(), clock, ids))
+                        device_tokens=DeviceTokenService(devices, clock, ids))
     return create_app(services, Rs256Verifier(settings.jwt_public_key))
 
 
