@@ -11,6 +11,12 @@ services:
       HTTP_KEEP_ALIVE_TIMEOUT_S: "5"
       HTTP_GRACEFUL_SHUTDOWN_S: "10"
       HTTP_MAX_CONCURRENCY: "200"
+      # The single MongoDB instance of barber-saas-infra-mongo, as this domain's own user (Annex J J.7).
+      MONGO_URL: mongodb://notifications_app:${NOTIFICATIONS_APP_PASSWORD:?set NOTIFICATIONS_APP_PASSWORD}@mongo:27017/notifications?authSource=notifications&directConnection=true
+      MONGO_DATABASE: notifications
+      MONGO_POOL_MAX: "10"
+      MONGO_TIMEOUT_MS: "5000"
+      MONGO_SERVER_SELECTION_TIMEOUT_MS: "3000"
     stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
