@@ -18,10 +18,12 @@ from notifications.adapter.outbound.persistence.in_memory import (InMemoryDevice
                                                                   InMemoryNotificationRepository)
 from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository,
                                                               MongoNotificationRepository, connect)
+from notifications.adapter.outbound.push.fcm import FcmPushSender
 from notifications.adapter.outbound.system import RandomIds, UtcClock
 from notifications.application.usecase.device_token_service import DeviceTokenService
 from notifications.application.usecase.event_service import EventService
 from notifications.application.usecase.notification_service import NotificationService
+from notifications.application.usecase.push_delivery import NoPush, PushDelivery
 
 log = logging.getLogger("notifications")
 
@@ -43,6 +45,10 @@ class Settings:
     # Each operation, and the wait for a pooled connection, ends after this many milliseconds.
     mongo_timeout_ms: int = 5000
     mongo_server_selection_timeout_ms: int = 3000
+    # Empty: no push, notifications stay in the inbox. Set: the FCM service account JSON (a secret).
+    fcm_service_account_json: str = ""
+    # One push request ends after this many seconds; the event is processed anyway.
+    fcm_timeout_s: int = 5
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -58,7 +64,9 @@ class Settings:
                    mongo_pool_max=number("MONGO_POOL_MAX", cls.mongo_pool_max),
                    mongo_timeout_ms=number("MONGO_TIMEOUT_MS", cls.mongo_timeout_ms),
                    mongo_server_selection_timeout_ms=number("MONGO_SERVER_SELECTION_TIMEOUT_MS",
-                                                            cls.mongo_server_selection_timeout_ms))
+                                                            cls.mongo_server_selection_timeout_ms),
+                   fcm_service_account_json=env.get("FCM_SERVICE_ACCOUNT_JSON", ""),
+                   fcm_timeout_s=number("FCM_TIMEOUT_S", cls.fcm_timeout_s))
 
 
 def build_app(settings: Settings) -> FastAPI:
@@ -73,9 +81,16 @@ def build_app(settings: Settings) -> FastAPI:
         notifications = InMemoryNotificationRepository()
         devices = InMemoryDeviceTokenRepository()
     services = Services(notifications=NotificationService(notifications, clock),
-                        events=EventService(notifications, clock, ids),
+                        events=EventService(notifications, clock, ids, push(settings, devices, notifications, clock)),
                         device_tokens=DeviceTokenService(devices, clock, ids))
     return create_app(services, Rs256Verifier(settings.jwt_public_key))
+
+
+def push(settings: Settings, devices, notifications, clock) -> PushDelivery | NoPush:
+    if not settings.fcm_service_account_json:
+        return NoPush()
+    sender = FcmPushSender.from_service_account(settings.fcm_service_account_json, timeout_s=settings.fcm_timeout_s)
+    return PushDelivery(devices, notifications, sender, clock)
 
 
 def configure_logging() -> None:
