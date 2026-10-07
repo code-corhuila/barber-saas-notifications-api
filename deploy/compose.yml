@@ -17,6 +17,9 @@ services:
       MONGO_POOL_MAX: "10"
       MONGO_TIMEOUT_MS: "5000"
       MONGO_SERVER_SELECTION_TIMEOUT_MS: "3000"
+      # Optional secret: without it notifications stay in the inbox and nothing is pushed.
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      FCM_TIMEOUT_S: "5"
     stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
