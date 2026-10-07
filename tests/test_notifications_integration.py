@@ -17,7 +17,8 @@ from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRe
                                                               MongoNotificationRepository, connect)
 from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
 from notifications.domain.model.device_token import DeviceToken, Platform
-from notifications.domain.model.notification import Notification, NotificationType
+from notifications.domain.model.notification import (DeliveryAttempt, DeliveryChannel, DeliveryStatus, Notification,
+                                                     NotificationType)
 
 URL = os.environ.get("TEST_MONGO_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_MONGO_URL is not set")
@@ -130,3 +131,30 @@ def test_the_service_on_mongodb_notifies_once_per_event_end_to_end():
     assert (first, again) == ("PROCESSED", "DUPLICATE")
     assert inbox["meta"]["total"] == 1
     assert inbox["data"][0]["body"] == "Tu cita del 10/10 a las 10:00 fue confirmada."
+
+
+def test_delivery_attempts_fit_the_validator_and_stay_bounded(notifications, database):
+    n = notification(uuid4(), 1)
+    notifications.add(n)
+
+    for i in range(12):
+        notifications.record_delivery(n.id, DeliveryAttempt(DeliveryChannel.PUSH, DeliveryStatus.FAILED,
+                                                             T0 + timedelta(seconds=i), error_code=f"E{i}"))
+    notifications.record_delivery(n.id, DeliveryAttempt(DeliveryChannel.PUSH, DeliveryStatus.SENT, T0))
+
+    stored = database[1]["notification"].find_one({"_id": str(n.id)})["deliveryAttempts"]
+    assert len(stored) == 10
+    assert stored[-1] == {"channel": "PUSH", "status": "SENT", "attemptedAt": T0}
+    assert stored[0]["errorCode"] == "E3"
+
+
+def test_the_devices_of_a_user_are_found_and_one_is_removed(devices):
+    user = uuid4()
+    mine = [DeviceToken(id=uuid4(), user_id=user, token=f"fcm-{uuid4()}", platform=Platform.ANDROID,
+                        created_at=T0, updated_at=T0) for _ in range(2)]
+    for d in mine:
+        devices.save(d, IdempotencyRecord(f"key-{uuid4()}", "POST /api/v1/device-tokens", d.id, "h"))
+
+    assert sorted(d.id for d in devices.tokens_of(user)) == sorted(d.id for d in mine)
+    devices.remove(mine[0].id)
+    assert [d.id for d in devices.tokens_of(user)] == [mine[1].id]

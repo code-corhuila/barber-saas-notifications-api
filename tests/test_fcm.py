@@ -4,6 +4,7 @@ import json
 import pytest
 
 from notifications.adapter.outbound.push.fcm import FcmPushSender
+from tests.conftest import PRIVATE_KEY
 
 
 class FakePost:
@@ -48,3 +49,14 @@ def test_maps_the_fcm_errors(status, answer, code, invalid):
     result = sender(FakePost(status, answer)).send("t", "title", "body", {})
 
     assert (result.ok, result.error_code, result.token_invalid) == (False, code, invalid)
+
+
+def test_builds_from_a_service_account_without_calling_google_yet():
+    account = {"type": "service_account", "project_id": "barbersaas-dev", "private_key_id": "k1",
+               "private_key": PRIVATE_KEY, "client_email": "push@barbersaas-dev.iam.gserviceaccount.com",
+               "client_id": "1", "token_uri": "https://oauth2.googleapis.com/token"}
+
+    built = FcmPushSender.from_service_account(json.dumps(account), timeout_s=3)
+
+    assert built._url == "https://fcm.googleapis.com/v1/projects/barbersaas-dev/messages:send"
+    assert built._timeout_s == 3
