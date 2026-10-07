@@ -12,7 +12,8 @@ from pymongo.errors import DuplicateKeyError
 
 from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
 from notifications.domain.model.device_token import DeviceToken, Platform
-from notifications.domain.model.notification import Notification, NotificationType
+from notifications.domain.model.notification import (MAX_DELIVERY_ATTEMPTS, DeliveryAttempt, Notification,
+                                                     NotificationType)
 
 SOURCE_EVENT_INDEX = "uq_notification_source_event"
 
@@ -52,6 +53,15 @@ class MongoNotificationRepository:
     def save(self, notification: Notification) -> None:
         self._collection.update_one({"_id": str(notification.id), "userId": str(notification.user_id)},
                                     {"$set": {"read": notification.read, "updatedAt": _utc(notification.updated_at)}})
+
+    def record_delivery(self, notification_id: UUID, attempt: DeliveryAttempt) -> None:
+        entry = {"channel": attempt.channel.value, "status": attempt.status.value,
+                 "attemptedAt": _utc(attempt.attempted_at)}
+        if attempt.error_code:
+            entry["errorCode"] = attempt.error_code
+        # $slice keeps the array bounded, as the validator requires (maxItems 10).
+        self._collection.update_one({"_id": str(notification_id)},
+                                    {"$push": {"deliveryAttempts": {"$each": [entry], "$slice": -MAX_DELIVERY_ATTEMPTS}}})
 
     def find(self, user_id: UUID, notification_id: UUID) -> Notification | None:
         found = self._collection.find_one({"_id": str(notification_id), "userId": str(user_id)})
@@ -103,6 +113,12 @@ class MongoDeviceTokenRepository:
         if not found:
             return None
         return IdempotencyRecord(found["key"], found["operation"], UUID(found["resourceId"]), found["requestHash"])
+
+    def tokens_of(self, user_id: UUID) -> list[DeviceToken]:
+        return [self._device(d) for d in self._devices.find({"userId": str(user_id)})]
+
+    def remove(self, device_token_id: UUID) -> None:
+        self._devices.delete_one({"_id": str(device_token_id)})
 
     def save(self, device_token: DeviceToken, key: IdempotencyRecord) -> None:
         """The device and its key in one transaction (norm 5.3.8): the instance is a replica set."""
