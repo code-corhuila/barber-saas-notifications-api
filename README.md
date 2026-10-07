@@ -49,6 +49,14 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 
 A null `clientId` (walk-in) answers `IGNORED`, a redelivered event `DUPLICATE`, another type `422`.
 
+**Push (FCM).** A new notification is also pushed to every device its user registered
+(`POST /api/v1/device-tokens`), through the FCM HTTP v1 API. Each try is kept in the notification's
+`deliveryAttempts` (the last 10); a token FCM no longer knows (`UNREGISTERED`) is removed. The push is
+best effort: if FCM fails or is slow (`FCM_TIMEOUT_S`), the event is still `PROCESSED` and the
+notification stays in the inbox; a redelivered event never pushes twice. Without
+`FCM_SERVICE_ACCOUNT_JSON` nothing is pushed. That credential is a secret of the environment and is
+**never** versioned.
+
 ## Structure (ADR-012, annex C)
 
 ```
