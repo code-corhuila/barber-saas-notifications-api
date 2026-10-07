@@ -57,7 +57,7 @@ src/notifications/
   application/port/        inbound use cases and outbound ports (repositories, clock, ids)
   application/usecase/     one service per group of operations
   adapter/inbound/http/    FastAPI: RS256, envelope, correlation, routes
-  adapter/outbound/        in-memory persistence (MongoDB comes with barber-saas-infra-mongo)
+  adapter/outbound/        persistence: MongoDB (pymongo) and in memory
 apps/api/__main__.py       composition root and explicit limits
 ```
 
@@ -68,8 +68,11 @@ import no FastAPI, pydantic, pymongo or jwt.
 
 - `barber-saas-identity-auth-api`: its public key (`JWT_PUBLIC_KEY`) to validate every token.
 - `barber-saas-worker`: delivers the events.
-- `barber-saas-notifications-db` and `barber-saas-infra-mongo`: the MongoDB collections. Until
-  then the repositories are in memory and nothing survives a restart.
+- `barber-saas-notifications-db` and `barber-saas-infra-mongo`: the MongoDB collections, their
+  validators and unique indexes. The service connects as `notifications_app` (`MONGO_URL`) and never
+  migrates. Without `MONGO_URL` the repositories are in memory and nothing survives a restart.
+  The unique `sourceEventId` index, not the code, makes a redelivered event notify once; a device
+  token and its Idempotency-Key are written in one transaction (the instance is a replica set).
 
 ## Run it
 
@@ -77,6 +80,8 @@ import no FastAPI, pydantic, pymongo or jwt.
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e '.[dev]'
 lint-imports && pytest
+# the MongoDB adapters too, against an instance migrated by barber-saas-notifications-db:
+TEST_MONGO_URL="mongodb://localhost:27017/?directConnection=true" pytest
 JWT_PUBLIC_KEY="$(cat ../barber-saas-infra-postgres/keys/jwt-public.pem)" python -m apps.api
 ```
 
