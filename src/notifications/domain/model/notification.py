@@ -19,6 +19,30 @@ class NotificationType(StrEnum):
     SYSTEM = "SYSTEM"
 
 
+class DeliveryChannel(StrEnum):
+    PUSH = "PUSH"
+    EMAIL = "EMAIL"
+
+
+class DeliveryStatus(StrEnum):
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
+# The collection keeps the last ones only (deliveryAttempts maxItems 10, models.md §7).
+MAX_DELIVERY_ATTEMPTS = 10
+
+
+@dataclass(frozen=True)
+class DeliveryAttempt:
+    """One try to reach the user outside the app, embedded in its notification."""
+
+    channel: DeliveryChannel
+    status: DeliveryStatus
+    attempted_at: datetime
+    error_code: str | None = None
+
+
 @dataclass(frozen=True)
 class Notification:
     id: UUID
