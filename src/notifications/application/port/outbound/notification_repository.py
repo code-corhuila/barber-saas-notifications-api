@@ -2,7 +2,7 @@
 from typing import Protocol
 from uuid import UUID
 
-from notifications.domain.model.notification import Notification
+from notifications.domain.model.notification import DeliveryAttempt, Notification
 
 
 class NotificationRepository(Protocol):
@@ -17,6 +17,10 @@ class NotificationRepository(Protocol):
         ...
 
     def save(self, notification: Notification) -> None: ...
+
+    def record_delivery(self, notification_id: UUID, attempt: DeliveryAttempt) -> None:
+        """Appends the attempt, keeping only the last MAX_DELIVERY_ATTEMPTS."""
+        ...
 
     def find(self, user_id: UUID, notification_id: UUID) -> Notification | None: ...
 
