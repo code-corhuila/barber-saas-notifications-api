@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.api.__main__ import Settings, build_app
+from apps.api.__main__ import Settings, build_app, push
 from tests.conftest import PUBLIC_KEY
 
 
@@ -27,6 +27,13 @@ def test_mongodb_is_optional_and_its_limits_are_declared():
     assert settings.mongo_url == ""
     assert (settings.mongo_database, settings.mongo_pool_max, settings.mongo_timeout_ms,
             settings.mongo_server_selection_timeout_ms) == ("notifications", 10, 5000, 3000)
+
+
+def test_push_is_off_without_credentials_and_its_timeout_is_declared():
+    settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY})
+
+    assert (settings.fcm_service_account_json, settings.fcm_timeout_s) == ("", 5)
+    assert type(push(settings, None, None, None)).__name__ == "NoPush"
 
 
 def test_limits_come_from_the_environment():
