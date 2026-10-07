@@ -8,6 +8,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
+
+from apps.api.__main__ import Settings, build_app
+from tests.conftest import PUBLIC_KEY, bearer, make_token
 
 from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository,
                                                               MongoNotificationRepository, connect)
@@ -108,3 +112,21 @@ def test_moving_a_device_to_another_user_keeps_one_document(devices):
     devices.save(moved, IdempotencyRecord(f"key-{uuid4()}", "POST /api/v1/device-tokens", device.id, "b"))
 
     assert devices.find_by_token(device.token) == moved
+
+
+def test_the_service_on_mongodb_notifies_once_per_event_end_to_end():
+    app = build_app(Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY, "MONGO_URL": URL,
+                                       "MONGO_DATABASE": os.environ.get("TEST_MONGO_DATABASE", "notifications")}))
+    client, user = TestClient(app), uuid4()
+    event = {"id": str(uuid4()), "type": "AppointmentConfirmed", "version": 1, "occurredAt": "2026-10-06T15:00:00Z",
+             "aggregateType": "appointment", "aggregateId": str(uuid4()), "correlationId": "it",
+             "payload": {"clientId": str(user), "date": "2026-10-10", "startTime": "10:00"}}
+    worker = bearer(make_token(sub="barber-saas-worker", role="SERVICE"))
+
+    first = client.post("/internal/v1/events", json=event, headers=worker).json()["outcome"]
+    again = client.post("/internal/v1/events", json=event, headers=worker).json()["outcome"]
+    inbox = client.get("/api/v1/notifications", headers=bearer(make_token(sub=str(user)))).json()
+
+    assert (first, again) == ("PROCESSED", "DUPLICATE")
+    assert inbox["meta"]["total"] == 1
+    assert inbox["data"][0]["body"] == "Tu cita del 10/10 a las 10:00 fue confirmada."

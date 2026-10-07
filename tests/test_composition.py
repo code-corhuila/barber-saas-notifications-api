@@ -21,6 +21,14 @@ def test_every_limit_has_a_declared_default():
             settings.max_concurrency) == (8080, 5, 10, 200)
 
 
+def test_mongodb_is_optional_and_its_limits_are_declared():
+    settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY})
+
+    assert settings.mongo_url == ""
+    assert (settings.mongo_database, settings.mongo_pool_max, settings.mongo_timeout_ms,
+            settings.mongo_server_selection_timeout_ms) == ("notifications", 10, 5000, 3000)
+
+
 def test_limits_come_from_the_environment():
     settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY, "PORT": "9000", "HTTP_MAX_CONCURRENCY": "50"})
 
