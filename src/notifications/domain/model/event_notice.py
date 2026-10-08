@@ -73,13 +73,8 @@ def _reward(_: Mapping) -> tuple[NotificationType, str, str]:
     return NotificationType.SYSTEM, "Recompensa canjeada", "Canjeaste tu recompensa: el cupón se aplica en tu próxima cita."
 
 
-def _password_reset(_: Mapping) -> tuple[NotificationType, str, str]:
-    # Never the reset code itself: an inbox is no place for a credential.
-    return (NotificationType.SYSTEM, "Cambio de contraseña",
-            "Recibimos una solicitud para cambiar tu contraseña. Si no fuiste tú, ignora este mensaje.")
-
-
-# event type → (payload field of the recipient, text)
+# event type → (payload field of the recipient, text). PasswordResetRequested is not here: it is an
+# e-mail, never an inbox notification (DEC-NOTIF-01, password_reset.py).
 _HANDLED: dict[str, tuple[str, Callable[[Mapping], tuple[NotificationType, str, str]]]] = {
     "AppointmentConfirmed": ("clientId", _confirmed),
     "AppointmentCancelled": ("clientId", _cancelled),
@@ -87,7 +82,6 @@ _HANDLED: dict[str, tuple[str, Callable[[Mapping], tuple[NotificationType, str, 
     "AppointmentReminderDue": ("clientId", _reminder),
     "StickerGranted": ("clientId", _sticker),
     "RewardRedeemed": ("clientId", _reward),
-    "PasswordResetRequested": ("userId", _password_reset),
 }
 
 
