@@ -136,3 +136,20 @@ class MongoDeviceTokenRepository:
     def _device(d: dict) -> DeviceToken:
         return DeviceToken(id=UUID(d["_id"]), user_id=UUID(d["userId"]), token=d["token"],
                            platform=Platform(d["platform"]), created_at=d["createdAt"], updated_at=d["updatedAt"])
+
+
+class MongoProcessedEventRepository:
+    """processed_event of barber-saas-notifications-db: the event id is the _id, so it is unique."""
+
+    def __init__(self, database: Database) -> None:
+        self._collection = database.get_collection("processed_event", write_concern=WriteConcern(w="majority"))
+
+    def seen(self, event_id: UUID) -> bool:
+        return self._collection.find_one({"_id": str(event_id)}, projection={"_id": 1}) is not None
+
+    def record(self, event_id: UUID, event_type: str, processed_at: datetime) -> None:
+        try:
+            self._collection.insert_one({"_id": str(event_id), "eventType": event_type,
+                                         "processedAt": _utc(processed_at)})
+        except DuplicateKeyError:
+            return None  # another delivery of the same event recorded it first
