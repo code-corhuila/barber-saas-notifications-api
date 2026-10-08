@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from notifications.adapter.inbound.http.correlation import correlation_id
-from notifications.domain.model.errors import (DomainError, IdempotencyConflict, InvalidEvent, NotificationNotFound,
-                                              UnsupportedEvent)
+from notifications.domain.model.errors import (DeliveryUnavailable, DomainError, IdempotencyConflict, InvalidEvent,
+                                              NotificationNotFound, UnsupportedEvent)
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +62,9 @@ def _domain_error(error: DomainError) -> ApiError:
         return ApiError(422, "BUSINESS_RULE_VIOLATION", f"This service does not handle the event {error}")
     if isinstance(error, InvalidEvent):
         return ApiError.validation([{"field": error.field, "message": error.problem}], "The event is not valid")
+    if isinstance(error, DeliveryUnavailable):
+        # 503: the worker retries it with backoff (ADR-016) instead of marking the event failed.
+        return ApiError(503, "SERVICE_UNAVAILABLE", "The event cannot be delivered now; retry later")
     log.error("unmapped domain error %s", type(error).__name__)
     return ApiError(500, "INTERNAL_ERROR", "Internal server error")
 
