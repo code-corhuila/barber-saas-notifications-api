@@ -47,8 +47,9 @@ class EventService:
         """DEC-NOTIF-01: e-mail only, no inbox notification, and only the event id is kept.
 
         Sent first and recorded after: a failed send is not recorded, so the worker's retry sends it
-        (a lost code locks the user out). A crash between both may send it twice, which at-least-once
-        delivery accepts.
+        (a lost code locks the user out). Once sent, the event is done even if recording it fails:
+        answering 503 then would resend the code on every retry. So a code is sent twice only when
+        the worker redelivers an event it already got an answer for, never in a loop.
         """
         mail = password_reset.reset_email(event.payload)
         if self._email is None or self._processed is None:
@@ -60,5 +61,8 @@ class EventService:
         except Exception as error:  # the mail server is down or refused it: the worker retries
             log.warning("password-reset e-mail not sent: %s", type(error).__name__)
             raise DeliveryUnavailable("the mail server did not accept the message") from None
-        self._processed.record(event.id, event.type, self._clock.now())
+        try:
+            self._processed.record(event.id, event.type, self._clock.now())
+        except Exception as error:  # the e-mail is out: a retry would only resend it
+            log.warning("password-reset e-mail sent but not recorded: %s", type(error).__name__)
         return EventOutcome.PROCESSED
