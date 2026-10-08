@@ -1,4 +1,5 @@
 """In-memory adapters: the service runs and is tested without MongoDB until infra-mongo exists."""
+from datetime import datetime
 from threading import Lock
 from uuid import UUID
 
@@ -75,3 +76,16 @@ class InMemoryDeviceTokenRepository:
         with self._lock:
             self._by_id[device_token.id] = device_token
             self._keys[(key.key, key.operation)] = key
+
+
+class InMemoryProcessedEventRepository:
+    def __init__(self) -> None:
+        self._seen: dict[UUID, tuple[str, datetime]] = {}
+        self._lock = Lock()
+
+    def seen(self, event_id: UUID) -> bool:
+        return event_id in self._seen
+
+    def record(self, event_id: UUID, event_type: str, processed_at: datetime) -> None:
+        with self._lock:
+            self._seen.setdefault(event_id, (event_type, processed_at))
