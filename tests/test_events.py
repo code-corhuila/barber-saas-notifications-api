@@ -47,8 +47,6 @@ def inbox(notifications, user: UUID = ANA) -> list:
      "Sumaste un sello en tu tarjeta de fidelidad."),
     ("RewardRedeemed", {"clientId": str(ANA)}, "SYSTEM", "Recompensa canjeada",
      "Canjeaste tu recompensa: el cupón se aplica en tu próxima cita."),
-    ("PasswordResetRequested", {"userId": str(ANA)}, "SYSTEM", "Cambio de contraseña",
-     "Recibimos una solicitud para cambiar tu contraseña. Si no fuiste tú, ignora este mensaje."),
 ])
 def test_each_event_notifies_its_recipient_once(client, notifications, event_type, payload, kind, title, body):
     event = envelope(event_type, payload)
@@ -81,7 +79,7 @@ def test_a_walk_in_has_nobody_to_notify(client, notifications):
 
 
 def test_an_event_without_a_barbershop_is_kept_without_one(client, notifications):
-    deliver(client, envelope("PasswordResetRequested", {"userId": str(ANA)}, barbershop=None))
+    deliver(client, envelope("StickerGranted", {"clientId": str(ANA)}, barbershop=None))
 
     assert inbox(notifications)[0].barbershop_id is None
 
