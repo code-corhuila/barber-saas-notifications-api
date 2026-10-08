@@ -149,3 +149,20 @@ def test_ids_are_independent_per_event(client, mail):
         deliver(client, envelope("PasswordResetRequested", reset(), event_id=str(uuid4()), barbershop=None))
 
     assert len(mail.sent) == 2
+
+
+class UnrecordableEvents(InMemoryProcessedEventRepository):
+    def record(self, event_id, event_type, processed_at) -> None:
+        raise TimeoutError("write concern timed out")
+
+
+def test_a_sent_code_whose_record_fails_is_not_retried_so_it_is_not_resent(notifications, clock, mail):
+    # Answering 503 here would make the worker resend the code on every retry while the store is
+    # down; the e-mail is out, so the event is done and only a redelivery by the worker repeats it.
+    client = app_with(notifications, clock, mail=mail, processed=UnrecordableEvents())
+    event = envelope("PasswordResetRequested", reset(), barbershop=None)
+
+    response = deliver(client, event)
+
+    assert response.status_code == 200 and response.json()["outcome"] == "PROCESSED"
+    assert len(mail.sent) == 1
