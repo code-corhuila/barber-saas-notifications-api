@@ -20,6 +20,15 @@ services:
       # Optional secret: without it notifications stay in the inbox and nothing is pushed.
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
       FCM_TIMEOUT_S: "5"
+      # Optional: without SMTP_HOST the password-reset code is not e-mailed and waits in the outbox
+      # (DEC-NOTIF-01). SMTP_PASSWORD is a secret of the environment.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TIMEOUT_S: "10"
     stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]

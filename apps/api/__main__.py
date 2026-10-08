@@ -14,10 +14,13 @@ from fastapi import FastAPI
 from notifications.adapter.inbound.http.app import Services, create_app
 from notifications.adapter.inbound.http.auth import Rs256Verifier
 from notifications.adapter.inbound.http.correlation import JsonFormatter
+from notifications.adapter.outbound.email.smtp import SmtpEmailSender
 from notifications.adapter.outbound.persistence.in_memory import (InMemoryDeviceTokenRepository,
-                                                                  InMemoryNotificationRepository)
+                                                                  InMemoryNotificationRepository,
+                                                                  InMemoryProcessedEventRepository)
 from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository,
-                                                              MongoNotificationRepository, connect)
+                                                              MongoNotificationRepository,
+                                                              MongoProcessedEventRepository, connect)
 from notifications.adapter.outbound.push.fcm import FcmPushSender
 from notifications.adapter.outbound.system import RandomIds, UtcClock
 from notifications.application.usecase.device_token_service import DeviceTokenService
@@ -49,6 +52,18 @@ class Settings:
     fcm_service_account_json: str = ""
     # One push request ends after this many seconds; the event is processed anyway.
     fcm_timeout_s: int = 5
+    # Empty: no mail server, so PasswordResetRequested answers 503 and waits in identity-auth's
+    # outbox (DEC-NOTIF-01). Set: the server that sends the password-reset code.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    # starttls (587), ssl (465) or none (a local test server only).
+    smtp_security: str = "starttls"
+    smtp_username: str = ""
+    # A secret of the environment, never versioned.
+    smtp_password: str = ""
+    smtp_from: str = ""
+    # One message, from connect to accepted, ends after this many seconds; the worker retries.
+    smtp_timeout_s: int = 10
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -66,7 +81,14 @@ class Settings:
                    mongo_server_selection_timeout_ms=number("MONGO_SERVER_SELECTION_TIMEOUT_MS",
                                                             cls.mongo_server_selection_timeout_ms),
                    fcm_service_account_json=env.get("FCM_SERVICE_ACCOUNT_JSON", ""),
-                   fcm_timeout_s=number("FCM_TIMEOUT_S", cls.fcm_timeout_s))
+                   fcm_timeout_s=number("FCM_TIMEOUT_S", cls.fcm_timeout_s),
+                   smtp_host=env.get("SMTP_HOST", ""),
+                   smtp_port=number("SMTP_PORT", cls.smtp_port),
+                   smtp_security=env.get("SMTP_SECURITY") or cls.smtp_security,
+                   smtp_username=env.get("SMTP_USERNAME", ""),
+                   smtp_password=env.get("SMTP_PASSWORD", ""),
+                   smtp_from=env.get("SMTP_FROM", ""),
+                   smtp_timeout_s=number("SMTP_TIMEOUT_S", cls.smtp_timeout_s))
 
 
 def build_app(settings: Settings) -> FastAPI:
@@ -77,13 +99,25 @@ def build_app(settings: Settings) -> FastAPI:
         database = client[settings.mongo_database]
         notifications = MongoNotificationRepository(database)
         devices = MongoDeviceTokenRepository(client, database)
+        processed = MongoProcessedEventRepository(database)
     else:
         notifications = InMemoryNotificationRepository()
         devices = InMemoryDeviceTokenRepository()
-    services = Services(notifications=NotificationService(notifications, clock),
-                        events=EventService(notifications, clock, ids, push(settings, devices, notifications, clock)),
+        processed = InMemoryProcessedEventRepository()
+    events = EventService(notifications, clock, ids, push(settings, devices, notifications, clock),
+                          processed=processed, email=email(settings))
+    services = Services(notifications=NotificationService(notifications, clock), events=events,
                         device_tokens=DeviceTokenService(devices, clock, ids))
     return create_app(services, Rs256Verifier(settings.jwt_public_key))
+
+
+def email(settings: Settings) -> SmtpEmailSender | None:
+    if not settings.smtp_host:
+        log.warning("SMTP_HOST is not set: password-reset codes are not e-mailed and wait in the outbox")
+        return None
+    return SmtpEmailSender(settings.smtp_host, settings.smtp_port, settings.smtp_from,
+                           username=settings.smtp_username, password=settings.smtp_password,
+                           security=settings.smtp_security, timeout_s=settings.smtp_timeout_s)
 
 
 def push(settings: Settings, devices, notifications, clock) -> PushDelivery | NoPush:
