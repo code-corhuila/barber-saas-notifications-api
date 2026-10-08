@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from apps.api.__main__ import Settings, build_app
 from tests.conftest import PUBLIC_KEY, bearer, make_token
 
-from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository,
+from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository, MongoProcessedEventRepository,
                                                               MongoNotificationRepository, connect)
 from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
 from notifications.domain.model.device_token import DeviceToken, Platform
@@ -158,3 +158,16 @@ def test_the_devices_of_a_user_are_found_and_one_is_removed(devices):
     assert sorted(d.id for d in devices.tokens_of(user)) == sorted(d.id for d in mine)
     devices.remove(mine[0].id)
     assert [d.id for d in devices.tokens_of(user)] == [mine[1].id]
+
+
+def test_a_processed_event_is_seen_and_recording_it_twice_is_harmless(database):
+    processed = MongoProcessedEventRepository(database[1])
+    event_id = uuid4()
+
+    assert not processed.seen(event_id)
+    processed.record(event_id, "PasswordResetRequested", T0)
+    processed.record(event_id, "PasswordResetRequested", T0)
+
+    assert processed.seen(event_id)
+    stored = database[1]["processed_event"].find_one({"_id": str(event_id)})
+    assert set(stored) == {"_id", "eventType", "processedAt"}
