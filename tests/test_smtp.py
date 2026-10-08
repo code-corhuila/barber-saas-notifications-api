@@ -107,3 +107,10 @@ def test_an_unreachable_server_raises():
 def test_an_unknown_security_mode_is_refused_at_startup():
     with pytest.raises(ValueError):
         SmtpEmailSender("smtp.example.com", 587, "no-reply@example.com", security="tls")
+
+
+def test_credentials_over_an_unencrypted_connection_are_refused_at_startup():
+    # SMTP_SECURITY=none is for a local test server: with a user it would log in in cleartext.
+    with pytest.raises(ValueError, match="cleartext"):
+        SmtpEmailSender("smtp.example.com", 25, "no-reply@example.com", username="mailer", password="secret",
+                        security="none")
