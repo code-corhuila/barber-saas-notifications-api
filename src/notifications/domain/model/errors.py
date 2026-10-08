@@ -26,5 +26,9 @@ class InvalidEvent(DomainError):
         self.problem = problem
 
 
+class DeliveryUnavailable(DomainError):
+    """A channel the event needs cannot deliver now (no mail server, or it refused): retry later."""
+
+
 class IdempotencyConflict(DomainError):
     """An Idempotency-Key already used for a different request."""
