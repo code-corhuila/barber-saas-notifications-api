@@ -16,6 +16,8 @@ class SmtpEmailSender:
                  security: str = "starttls", timeout_s: float = 10.0) -> None:
         if security not in SECURITY_MODES:
             raise ValueError(f"SMTP_SECURITY must be one of {', '.join(SECURITY_MODES)}")
+        if security == "none" and username:
+            raise ValueError("SMTP_SECURITY=none would send SMTP_USERNAME and SMTP_PASSWORD in cleartext")
         self._host, self._port, self._sender = host, port, sender
         self._username, self._password = username, password
         self._security, self._timeout_s = security, timeout_s
