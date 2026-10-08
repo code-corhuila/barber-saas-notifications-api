@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.api.__main__ import Settings, build_app, push
+from apps.api.__main__ import Settings, build_app, email, push
 from tests.conftest import PUBLIC_KEY
 
 
@@ -44,5 +44,21 @@ def test_limits_come_from_the_environment():
 
 @pytest.mark.parametrize("env", [{}, {"JWT_PUBLIC_KEY": "not-a-key"}], ids=["missing", "not-a-pem"])
 def test_the_service_refuses_to_start_without_the_public_key(env):
+    with pytest.raises(ValueError):
+        build_app(Settings.from_env(env))
+
+
+def test_without_smtp_host_the_service_starts_and_sends_no_e_mail(caplog):
+    # The reset event then answers 503 and waits in the outbox (test_password_reset).
+    settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY})
+
+    assert email(settings) is None and "SMTP_HOST is not set" in caplog.text
+    assert TestClient(build_app(settings)).get("/health").status_code == 200
+
+
+def test_the_service_refuses_to_start_with_credentials_over_an_unencrypted_connection():
+    env = {"JWT_PUBLIC_KEY": PUBLIC_KEY, "SMTP_HOST": "smtp.example.com", "SMTP_SECURITY": "none",
+           "SMTP_USERNAME": "mailer", "SMTP_PASSWORD": "secret"}
+
     with pytest.raises(ValueError):
         build_app(Settings.from_env(env))

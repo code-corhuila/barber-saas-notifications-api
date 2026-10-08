@@ -26,7 +26,7 @@ Full policy: `00-governance/branching-policy.md` in `barber-saas-docs`.
 
 ## What this service does
 
-The **notifications** domain (`notification-service.yaml` 2.1.0 in `barber-saas-docs`): the in-app
+The **notifications** domain (`notification-service.yaml` 2.3.0 in `barber-saas-docs`): the in-app
 inbox of each user and the device tokens for push delivery. No public endpoint creates a
 notification: `barber-saas-worker` delivers each domain event to `POST /internal/v1/events`
 (ADR-016), and each event produces at most one notification.
@@ -45,9 +45,17 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 | `AppointmentCancelled`, `AppointmentCompleted` | `payload.clientId` | `SYSTEM` |
 | `AppointmentReminderDue` | `payload.clientId` | `REMINDER` |
 | `StickerGranted`, `RewardRedeemed` | `payload.clientId` | `SYSTEM` |
-| `PasswordResetRequested` | `payload.userId` | `SYSTEM` |
+| `PasswordResetRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
 
 A null `clientId` (walk-in) answers `IGNORED`, a redelivered event `DUPLICATE`, another type `422`.
+
+**Password-reset e-mail (`DEC-NOTIF-01`).** `PasswordResetRequested` sends the 6-digit code to
+`payload.email` through SMTP (`SMTP_*`, standard library) and creates no inbox notification: a user
+who cannot sign in never reads one. The e-mail is sent first and then the event id alone is written
+to `processed_event` — never the code — so a redelivery answers `DUPLICATE` without a second e-mail.
+Without `SMTP_HOST`, or when the server refuses the message, the event answers `503` and the worker
+retries it (ADR-016); a crash between sending and recording may send it twice, which at-least-once
+delivery accepts. `SMTP_PASSWORD` is a secret of the environment and is **never** versioned.
 
 **Push (FCM).** A new notification is also pushed to every device its user registered
 (`POST /api/v1/device-tokens`), through the FCM HTTP v1 API. Each try is kept in the notification's
