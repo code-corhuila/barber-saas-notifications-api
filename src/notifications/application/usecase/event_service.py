@@ -52,6 +52,8 @@ class EventService:
         the worker redelivers an event it already got an answer for, never in a loop.
         """
         mail = password_reset.reset_email(event.payload)
+        if mail.expires_at <= self._clock.now():  # the code no longer works: nothing to send, nothing to retry
+            return EventOutcome.IGNORED
         if self._email is None or self._processed is None:
             raise DeliveryUnavailable("no mail server is configured")
         if self._processed.seen(event.id):
