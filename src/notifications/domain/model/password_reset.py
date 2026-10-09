@@ -24,6 +24,7 @@ class ResetEmail:
     to: str
     subject: str
     body: str
+    expires_at: datetime
 
 
 def _text(payload: Mapping, field: str) -> str:
@@ -57,4 +58,5 @@ def reset_email(payload: Mapping) -> ResetEmail:
             f"Tu código para cambiar la contraseña de BarberSaaS es: {code}\n\n"
             f"Vence a las {local:%H:%M} del {local:%d/%m/%Y} (hora de Colombia) y solo se puede usar una vez.\n\n"
             "Si no pediste este cambio, ignora este correo: tu contraseña sigue igual.")
-    return ResetEmail(user_id=user_id, to=to, subject="Código para cambiar tu contraseña", body=body)
+    return ResetEmail(user_id=user_id, to=to, subject="Código para cambiar tu contraseña", body=body,
+                      expires_at=expires)
