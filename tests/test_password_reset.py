@@ -166,3 +166,23 @@ def test_a_sent_code_whose_record_fails_is_not_retried_so_it_is_not_resent(notif
 
     assert response.status_code == 200 and response.json()["outcome"] == "PROCESSED"
     assert len(mail.sent) == 1
+
+
+def test_an_expired_code_is_ignored_and_not_e_mailed(client, mail, processed):
+    # A code that can no longer be used is not worth an e-mail: the user would only be confused.
+    event = envelope("PasswordResetRequested", reset(expiresAt="2026-10-06T12:59:59Z"), barbershop=None)
+
+    response = deliver(client, event)
+
+    assert response.status_code == 200 and response.json()["outcome"] == "IGNORED"
+    assert mail.sent == [] and not processed.seen(UUID(event["id"]))
+
+
+def test_an_expired_code_is_ignored_even_without_a_mail_server(notifications, clock, processed):
+    # Answering 503 would make the worker retry an event that can never be sent.
+    client = app_with(notifications, clock, mail=None, processed=processed)
+
+    response = deliver(client, envelope("PasswordResetRequested", reset(expiresAt="2026-10-06T13:00:00Z"),
+                                        barbershop=None))
+
+    assert response.status_code == 200 and response.json()["outcome"] == "IGNORED"
