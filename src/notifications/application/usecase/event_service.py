@@ -8,7 +8,7 @@ from notifications.application.port.outbound.ids import IdGenerator
 from notifications.application.port.outbound.notification_repository import NotificationRepository
 from notifications.application.port.outbound.processed_event_repository import ProcessedEventRepository
 from notifications.application.usecase.push_delivery import NoPush, PushDelivery
-from notifications.domain.model import password_reset
+from notifications.domain.model import code_email
 from notifications.domain.model.errors import DeliveryUnavailable
 from notifications.domain.model.event_notice import notice_for
 from notifications.domain.model.notification import Notification
@@ -28,8 +28,8 @@ class EventService:
         self._email = email
 
     def receive(self, event: IncomingEvent) -> EventOutcome:
-        if event.type == password_reset.EVENT_TYPE:
-            return self._send_reset_code(event)
+        if event.type in code_email.EVENT_TYPES:
+            return self._send_code(event)
         notice = notice_for(event.type, event.payload)
         if notice is None:
             return EventOutcome.IGNORED
@@ -43,15 +43,15 @@ class EventService:
         self._push.deliver(notification)
         return EventOutcome.PROCESSED
 
-    def _send_reset_code(self, event: IncomingEvent) -> EventOutcome:
-        """DEC-NOTIF-01: e-mail only, no inbox notification, and only the event id is kept.
+    def _send_code(self, event: IncomingEvent) -> EventOutcome:
+        """DEC-NOTIF-01, DEC-NOTIF-02: e-mail only, no inbox notification, and only the event id is kept.
 
         Sent first and recorded after: a failed send is not recorded, so the worker's retry sends it
         (a lost code locks the user out). Once sent, the event is done even if recording it fails:
         answering 503 then would resend the code on every retry. So a code is sent twice only when
         the worker redelivers an event it already got an answer for, never in a loop.
         """
-        mail = password_reset.reset_email(event.payload)
+        mail = code_email.code_email(event.type, event.payload)
         if mail.expires_at <= self._clock.now():  # the code no longer works: nothing to send, nothing to retry
             return EventOutcome.IGNORED
         if self._email is None or self._processed is None:
@@ -61,10 +61,10 @@ class EventService:
         try:
             self._email.send(mail.to, mail.subject, mail.body)
         except Exception as error:  # the mail server is down or refused it: the worker retries
-            log.warning("password-reset e-mail not sent: %s", type(error).__name__)
+            log.warning("code e-mail not sent: %s", type(error).__name__)
             raise DeliveryUnavailable("the mail server did not accept the message") from None
         try:
             self._processed.record(event.id, event.type, self._clock.now())
         except Exception as error:  # the e-mail is out: a retry would only resend it
-            log.warning("password-reset e-mail sent but not recorded: %s", type(error).__name__)
+            log.warning("code e-mail sent but not recorded: %s", type(error).__name__)
         return EventOutcome.PROCESSED
