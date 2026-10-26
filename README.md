@@ -45,11 +45,12 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 | `AppointmentCancelled`, `AppointmentCompleted` | `payload.clientId` | `SYSTEM` |
 | `AppointmentReminderDue` | `payload.clientId` | `REMINDER` |
 | `StickerGranted`, `RewardRedeemed` | `payload.clientId` | `SYSTEM` |
-| `PasswordResetRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
+| `PasswordResetRequested`, `EmailVerificationRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
 
 A null `clientId` (walk-in) answers `IGNORED`, a redelivered event `DUPLICATE`, another type `422`.
 
-**Password-reset e-mail (`DEC-NOTIF-01`).** `PasswordResetRequested` sends the 6-digit code to
+**Code e-mails (`DEC-NOTIF-01`, `DEC-NOTIF-02`).** `PasswordResetRequested` and
+`EmailVerificationRequested` send the 6-digit code to
 `payload.email` through SMTP (`SMTP_*`, standard library) and creates no inbox notification: a user
 who cannot sign in never reads one. The e-mail is sent first and then the event id alone is written
 to `processed_event` — never the code — so a redelivery answers `DUPLICATE` without a second e-mail.
