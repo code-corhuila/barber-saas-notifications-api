@@ -73,8 +73,8 @@ def _reward(_: Mapping) -> tuple[NotificationType, str, str]:
     return NotificationType.SYSTEM, "Recompensa canjeada", "Canjeaste tu recompensa: el cupón se aplica en tu próxima cita."
 
 
-# event type → (payload field of the recipient, text). PasswordResetRequested is not here: it is an
-# e-mail, never an inbox notification (DEC-NOTIF-01, password_reset.py).
+# event type → (payload field of the recipient, text). The code events are not here: they are an
+# e-mail, never an inbox notification (DEC-NOTIF-01, DEC-NOTIF-02, code_email.py).
 _HANDLED: dict[str, tuple[str, Callable[[Mapping], tuple[NotificationType, str, str]]]] = {
     "AppointmentConfirmed": ("clientId", _confirmed),
     "AppointmentCancelled": ("clientId", _cancelled),
