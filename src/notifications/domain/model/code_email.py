@@ -54,6 +54,14 @@ def _text(payload: Mapping, field: str) -> str:
     return value.strip()
 
 
+def email_address(value: object, field: str) -> str:
+    """An address safe to put in a header: no line break can smuggle another recipient in."""
+    to = value.strip() if isinstance(value, str) else ""
+    if "@" not in to or len(to) > EMAIL_MAX or any(c in to for c in "\r\n"):
+        raise InvalidEvent(field, "must be an e-mail address")
+    return to
+
+
 def code_email(event_type: str, payload: Mapping) -> CodeEmail:
     """The e-mail of one code event (02-domain/domain-events.md, DEC-AUTH-08, DEC-AUTH-09)."""
     subject, text = _KINDS[event_type]
@@ -61,9 +69,7 @@ def code_email(event_type: str, payload: Mapping) -> CodeEmail:
         user_id = UUID(_text(payload, "userId"))
     except ValueError:
         raise InvalidEvent("payload.userId", "must be a UUID") from None
-    to = _text(payload, "email")
-    if "@" not in to or len(to) > EMAIL_MAX or any(c in to for c in "\r\n"):
-        raise InvalidEvent("payload.email", "must be an e-mail address")
+    to = email_address(_text(payload, "email"), "payload.email")
     code = _text(payload, "code")
     if not (len(code) == 6 and code.isdigit()):
         raise InvalidEvent("payload.code", "must be 6 digits")
