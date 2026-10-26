@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.api.__main__ import Settings, build_app, email, push
+from apps.api.__main__ import Settings, build_app, contacts, email, push
 from tests.conftest import PUBLIC_KEY
 
 
@@ -62,3 +62,18 @@ def test_the_service_refuses_to_start_with_credentials_over_an_unencrypted_conne
 
     with pytest.raises(ValueError):
         build_app(Settings.from_env(env))
+
+
+def test_without_identity_auth_reminders_are_not_e_mailed_and_its_timeout_is_declared(caplog):
+    settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY})
+
+    assert (settings.identity_auth_api_url, settings.service_token, settings.identity_auth_timeout_s) == ("", "", 3)
+    assert contacts(settings) is None and "reminders are not e-mailed" in caplog.text
+
+
+def test_identity_auth_is_read_with_the_service_token():
+    settings = Settings.from_env({"JWT_PUBLIC_KEY": PUBLIC_KEY, "IDENTITY_AUTH_API_URL": "http://identity-auth-api:8080",
+                                  "SERVICE_TOKEN": "service-token", "IDENTITY_AUTH_TIMEOUT_S": "2"})
+
+    assert type(contacts(settings)).__name__ == "IdentityAuthContacts"
+    assert settings.identity_auth_timeout_s == 2
