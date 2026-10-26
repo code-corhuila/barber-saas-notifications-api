@@ -15,6 +15,7 @@ from notifications.adapter.inbound.http.app import Services, create_app
 from notifications.adapter.inbound.http.auth import Rs256Verifier
 from notifications.adapter.inbound.http.correlation import JsonFormatter
 from notifications.adapter.outbound.email.smtp import SmtpEmailSender
+from notifications.adapter.outbound.identity.http import IdentityAuthContacts
 from notifications.adapter.outbound.persistence.in_memory import (InMemoryDeviceTokenRepository,
                                                                   InMemoryNotificationRepository,
                                                                   InMemoryProcessedEventRepository)
@@ -64,6 +65,13 @@ class Settings:
     smtp_from: str = ""
     # One message, from connect to accepted, ends after this many seconds; the worker retries.
     smtp_timeout_s: int = 10
+    # Empty URL or token: reminders reach the inbox and the push, not the e-mail (DEC-NOTIF-02).
+    # Set: identity-auth gives the client's address (DEC-AUTH-10) to this service's token.
+    identity_auth_api_url: str = ""
+    # A secret of the environment (sub barber-saas-notifications-api), never versioned.
+    service_token: str = ""
+    # One contact request ends after this many seconds; the reminder is processed anyway.
+    identity_auth_timeout_s: int = 3
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -88,7 +96,10 @@ class Settings:
                    smtp_username=env.get("SMTP_USERNAME", ""),
                    smtp_password=env.get("SMTP_PASSWORD", ""),
                    smtp_from=env.get("SMTP_FROM", ""),
-                   smtp_timeout_s=number("SMTP_TIMEOUT_S", cls.smtp_timeout_s))
+                   smtp_timeout_s=number("SMTP_TIMEOUT_S", cls.smtp_timeout_s),
+                   identity_auth_api_url=env.get("IDENTITY_AUTH_API_URL", ""),
+                   service_token=env.get("SERVICE_TOKEN", ""),
+                   identity_auth_timeout_s=number("IDENTITY_AUTH_TIMEOUT_S", cls.identity_auth_timeout_s))
 
 
 def build_app(settings: Settings) -> FastAPI:
@@ -105,7 +116,7 @@ def build_app(settings: Settings) -> FastAPI:
         devices = InMemoryDeviceTokenRepository()
         processed = InMemoryProcessedEventRepository()
     events = EventService(notifications, clock, ids, push(settings, devices, notifications, clock),
-                          processed=processed, email=email(settings))
+                          processed=processed, email=email(settings), contacts=contacts(settings))
     services = Services(notifications=NotificationService(notifications, clock), events=events,
                         device_tokens=DeviceTokenService(devices, clock, ids))
     return create_app(services, Rs256Verifier(settings.jwt_public_key))
@@ -118,6 +129,14 @@ def email(settings: Settings) -> SmtpEmailSender | None:
     return SmtpEmailSender(settings.smtp_host, settings.smtp_port, settings.smtp_from,
                            username=settings.smtp_username, password=settings.smtp_password,
                            security=settings.smtp_security, timeout_s=settings.smtp_timeout_s)
+
+
+def contacts(settings: Settings) -> IdentityAuthContacts | None:
+    if not (settings.identity_auth_api_url and settings.service_token):
+        log.warning("IDENTITY_AUTH_API_URL or SERVICE_TOKEN is not set: reminders are not e-mailed")
+        return None
+    return IdentityAuthContacts(settings.identity_auth_api_url, settings.service_token,
+                                timeout_s=settings.identity_auth_timeout_s)
 
 
 def push(settings: Settings, devices, notifications, clock) -> PushDelivery | NoPush:
