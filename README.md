@@ -45,6 +45,7 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 | `AppointmentCancelled`, `AppointmentCompleted` | `payload.clientId` | `SYSTEM` |
 | `AppointmentReminderDue` | `payload.clientId` | `REMINDER` |
 | `StickerGranted`, `RewardRedeemed` | `payload.clientId` | `SYSTEM` |
+| `PlanExpiringSoon`, `BarbershopSuspended` | each of `payload.owners` — **also by e-mail** | `SYSTEM` |
 | `PasswordResetRequested`, `EmailVerificationRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
 
 A null `clientId` (walk-in) answers `IGNORED`, a redelivered event `DUPLICATE`, another type `422`.
@@ -57,6 +58,10 @@ to `processed_event` — never the code — so a redelivery answers `DUPLICATE` 
 Without `SMTP_HOST`, or when the server refuses the message, the event answers `503` and the worker
 retries it (ADR-016); a crash between sending and recording may send it twice, which at-least-once
 delivery accepts. `SMTP_PASSWORD` is a secret of the environment and is **never** versioned.
+
+**Notices by e-mail (`DEC-NOTIF-02`).** `PlanExpiringSoon` and `BarbershopSuspended` are also e-mailed
+to each owner's `email`, after the push. That e-mail is best effort, like the push: a failure is kept
+in `deliveryAttempts` (`EMAIL`, `FAILED`) and the event is still `PROCESSED`. Only the codes answer `503`.
 
 **Push (FCM).** A new notification is also pushed to every device its user registered
 (`POST /api/v1/device-tokens`), through the FCM HTTP v1 API. Each try is kept in the notification's
