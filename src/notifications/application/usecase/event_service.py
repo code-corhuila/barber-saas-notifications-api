@@ -1,16 +1,18 @@
 """Receive one domain event: at most one notification per event id (ADR-016, at-least-once)."""
 import logging
+from dataclasses import replace
 
 from notifications.application.port.inbound.event_use_cases import EventOutcome, IncomingEvent
 from notifications.application.port.outbound.clock import Clock
+from notifications.application.port.outbound.contact_directory import ContactDirectory
 from notifications.application.port.outbound.email_sender import EmailSender
 from notifications.application.port.outbound.ids import IdGenerator
 from notifications.application.port.outbound.notification_repository import NotificationRepository
 from notifications.application.port.outbound.processed_event_repository import ProcessedEventRepository
 from notifications.application.usecase.push_delivery import NoPush, PushDelivery
 from notifications.domain.model import code_email
-from notifications.domain.model.errors import DeliveryUnavailable
-from notifications.domain.model.event_notice import notices_for
+from notifications.domain.model.errors import DeliveryUnavailable, InvalidEvent
+from notifications.domain.model.event_notice import Notice, notices_for
 from notifications.domain.model.notification import DeliveryAttempt, DeliveryChannel, DeliveryStatus, Notification
 
 log = logging.getLogger(__name__)
@@ -19,13 +21,14 @@ log = logging.getLogger(__name__)
 class EventService:
     def __init__(self, notifications: NotificationRepository, clock: Clock, ids: IdGenerator,
                  push: PushDelivery | NoPush | None = None, *, processed: ProcessedEventRepository | None = None,
-                 email: EmailSender | None = None) -> None:
+                 email: EmailSender | None = None, contacts: ContactDirectory | None = None) -> None:
         self._notifications = notifications
         self._clock = clock
         self._ids = ids
         self._push = push or NoPush()
         self._processed = processed
         self._email = email
+        self._contacts = contacts
 
     def receive(self, event: IncomingEvent) -> EventOutcome:
         if event.type in code_email.EVENT_TYPES:
@@ -48,9 +51,35 @@ class EventService:
             outcome = EventOutcome.PROCESSED
             # Only a new notification is pushed or e-mailed: a redelivered event never repeats them.
             self._push.deliver(notification)
-            if notice.email:
-                self._mail_notice(notification, notice.email, notice.email_body())
+            addressed = self._addressed(notice)
+            if addressed is not None:
+                self._mail_notice(notification, addressed.email, addressed.email_body())
         return outcome
+
+    def _addressed(self, notice: Notice) -> Notice | None:
+        """The notice with the address to e-mail it to, or None when it is not e-mailed (DEC-NOTIF-02).
+
+        A reminder's address is read from identity-auth (DEC-AUTH-10). If it cannot answer, the client
+        still has the inbox and the push, so the reminder is not held back for the e-mail.
+        """
+        if notice.email:
+            return notice
+        if not notice.email_looked_up or self._contacts is None or self._email is None:
+            return None
+        try:
+            contact = self._contacts.contact_of(notice.recipient)
+        except Exception as error:  # identity-auth is down or slow
+            log.warning("recipient's e-mail not read: %s", type(error).__name__)
+            return None
+        if contact is None:
+            log.warning("identity-auth does not know the recipient: the reminder is not e-mailed")
+            return None
+        try:
+            to = code_email.email_address(contact.email, "contact.email")
+        except InvalidEvent:
+            log.warning("identity-auth gave an address that cannot be e-mailed")
+            return None
+        return replace(notice, email=to, name=contact.full_name.strip())
 
     def _mail_notice(self, notification: Notification, to: str, body: str) -> None:
         """DEC-NOTIF-02: best effort, like the push. The inbox already has it, so a failure only logs."""
