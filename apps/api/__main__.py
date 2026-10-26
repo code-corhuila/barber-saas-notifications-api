@@ -52,8 +52,8 @@ class Settings:
     fcm_service_account_json: str = ""
     # One push request ends after this many seconds; the event is processed anyway.
     fcm_timeout_s: int = 5
-    # Empty: no mail server, so PasswordResetRequested answers 503 and waits in identity-auth's
-    # outbox (DEC-NOTIF-01). Set: the server that sends the password-reset code.
+    # Empty: no mail server, so the code events answer 503 and wait in identity-auth's outbox
+    # (DEC-NOTIF-01), and the notices reach the inbox and the push only. Set: the server of every e-mail.
     smtp_host: str = ""
     smtp_port: int = 587
     # starttls (587), ssl (465) or none (a local test server only).
@@ -113,7 +113,7 @@ def build_app(settings: Settings) -> FastAPI:
 
 def email(settings: Settings) -> SmtpEmailSender | None:
     if not settings.smtp_host:
-        log.warning("SMTP_HOST is not set: password-reset codes are not e-mailed and wait in the outbox")
+        log.warning("SMTP_HOST is not set: codes wait in the outbox and notices are not e-mailed")
         return None
     return SmtpEmailSender(settings.smtp_host, settings.smtp_port, settings.smtp_from,
                            username=settings.smtp_username, password=settings.smtp_password,
