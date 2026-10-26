@@ -23,6 +23,8 @@ class Notice:
     # Where the same notice is also e-mailed (DEC-NOTIF-02); None: inbox and push only.
     email: str | None = None
     name: str = ""
+    # The event does not carry the address: it is read from identity-auth (DEC-AUTH-10).
+    email_looked_up: bool = False
 
     def email_body(self) -> str:
         return f"Hola{' ' + self.name if self.name else ''},\n\n{self.body}"
@@ -41,17 +43,21 @@ def _recipient(payload: Mapping, field: str) -> UUID | None:
         raise InvalidEvent(f"payload.{field}", "must be a UUID") from None
 
 
+def _start(payload: Mapping) -> str:
+    """'10:00' or '10:00:00' → '10:00'."""
+    try:
+        return f"{time.fromisoformat(str(payload.get('startTime'))):%H:%M}"
+    except ValueError:
+        raise InvalidEvent("payload.startTime", "must be a time as HH:mm") from None
+
+
 def _when(payload: Mapping) -> str:
     """'2026-10-10' and '10:00' (or '10:00:00') → 'del 10/10 a las 10:00'."""
     try:
         day = date.fromisoformat(str(payload.get("date")))
     except ValueError:
         raise InvalidEvent("payload.date", "must be a date as YYYY-MM-DD") from None
-    try:
-        start = time.fromisoformat(str(payload.get("startTime")))
-    except ValueError:
-        raise InvalidEvent("payload.startTime", "must be a time as HH:mm") from None
-    return f"del {day:%d/%m} a las {start:%H:%M}"
+    return f"del {day:%d/%m} a las {_start(payload)}"
 
 
 def _confirmed(p: Mapping) -> tuple[NotificationType, str, str]:
@@ -69,7 +75,13 @@ def _completed(p: Mapping) -> tuple[NotificationType, str, str]:
 
 
 def _reminder(p: Mapping) -> tuple[NotificationType, str, str]:
-    return NotificationType.REMINDER, "Recordatorio de cita", f"Recuerda tu cita {_when(p)}."
+    # Version 1 has no window: it was always the day-before reminder (DEC-APPT-12).
+    window = p.get("window") or "DAY_BEFORE"
+    if window == "DAY_BEFORE":
+        return NotificationType.REMINDER, "Recordatorio de cita", f"Recuerda tu cita {_when(p)}."
+    if window != "HOUR_BEFORE":
+        raise InvalidEvent("payload.window", "must be one of DAY_BEFORE, HOUR_BEFORE")
+    return NotificationType.REMINDER, "Recordatorio de cita", f"Tu cita es en 1 hora ({_start(p)})."
 
 
 def _sticker(_: Mapping) -> tuple[NotificationType, str, str]:
@@ -90,6 +102,8 @@ _HANDLED: dict[str, tuple[str, Callable[[Mapping], tuple[NotificationType, str, 
     "StickerGranted": ("clientId", _sticker),
     "RewardRedeemed": ("clientId", _reward),
 }
+# Client events that are also e-mailed, to the address identity-auth gives (DEC-NOTIF-02).
+_E_MAILED_TO_CLIENT = frozenset({"AppointmentReminderDue"})
 
 
 def _choice(payload: Mapping, field: str, allowed: Mapping[str, str]) -> str:
@@ -173,4 +187,5 @@ def notices_for(event_type: str, payload: Mapping) -> list[Notice]:
     if recipient is None:
         return []
     kind, title, body = text(payload)
-    return [Notice(recipient=recipient, type=kind, title=title, body=body)]
+    return [Notice(recipient=recipient, type=kind, title=title, body=body,
+                   email_looked_up=event_type in _E_MAILED_TO_CLIENT)]
