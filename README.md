@@ -43,7 +43,7 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 |---|---|---|
 | `AppointmentConfirmed` | `payload.clientId` | `APPOINTMENT_CONFIRMATION` |
 | `AppointmentCancelled`, `AppointmentCompleted` | `payload.clientId` | `SYSTEM` |
-| `AppointmentReminderDue` | `payload.clientId` | `REMINDER` |
+| `AppointmentReminderDue` | `payload.clientId` — **also by e-mail**, by `window` (`DAY_BEFORE`, `HOUR_BEFORE`) | `REMINDER` |
 | `StickerGranted`, `RewardRedeemed` | `payload.clientId` | `SYSTEM` |
 | `PlanExpiringSoon`, `BarbershopSuspended` | each of `payload.owners` — **also by e-mail** | `SYSTEM` |
 | `PasswordResetRequested`, `EmailVerificationRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
@@ -62,6 +62,10 @@ delivery accepts. `SMTP_PASSWORD` is a secret of the environment and is **never*
 **Notices by e-mail (`DEC-NOTIF-02`).** `PlanExpiringSoon` and `BarbershopSuspended` are also e-mailed
 to each owner's `email`, after the push. That e-mail is best effort, like the push: a failure is kept
 in `deliveryAttempts` (`EMAIL`, `FAILED`) and the event is still `PROCESSED`. Only the codes answer `503`.
+`AppointmentReminderDue` is e-mailed too: its payload has no address, so the client's one is read from
+identity-auth's `GET /internal/v1/users/{id}/contact` (`DEC-AUTH-10`) with `SERVICE_TOKEN`. If identity-auth
+does not answer (`IDENTITY_AUTH_TIMEOUT_S`), the reminder is still `PROCESSED` without the e-mail. A
+version 1 reminder has no `window` and is the day-before one.
 
 **Push (FCM).** A new notification is also pushed to every device its user registered
 (`POST /api/v1/device-tokens`), through the FCM HTTP v1 API. Each try is kept in the notification's
