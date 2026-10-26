@@ -1,4 +1,4 @@
-"""What the service needs to send an e-mail (DEC-NOTIF-01): only the password-reset code uses it."""
+"""What the service needs to send an e-mail (DEC-NOTIF-01, DEC-NOTIF-02)."""
 from typing import Protocol
 
 
