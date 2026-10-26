@@ -29,6 +29,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_TIMEOUT_S: "10"
+      # The client's address for the reminder e-mails (DEC-AUTH-10), with this service's own token.
+      IDENTITY_AUTH_API_URL: http://identity-auth-api:8080
+      SERVICE_TOKEN: ${NOTIFICATIONS_SERVICE_TOKEN:?run barber-saas-infra-postgres/scripts/dev-keys.sh}
+      IDENTITY_AUTH_TIMEOUT_S: "3"
     stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
