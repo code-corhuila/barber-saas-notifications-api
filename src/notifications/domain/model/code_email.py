@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from notifications.domain.model import email_layout
 from notifications.domain.model.errors import InvalidEvent
 
 # Colombia has no daylight saving time: a fixed offset avoids depending on a time zone database.
@@ -24,6 +25,8 @@ class CodeEmail:
     subject: str
     body: str
     expires_at: datetime
+    # The same message as HTML, with the code in a box (email_layout.py).
+    html: str = ""
 
 
 def _reset_text(code: str, expires: datetime) -> str:
@@ -39,10 +42,22 @@ def _verification_text(code: str, _: datetime) -> str:
             "Si no creaste una cuenta en BarberSaaS, ignora este correo.")
 
 
-# event type → (subject, text after the greeting)
-_KINDS: dict[str, tuple[str, Callable[[str, datetime], str]]] = {
-    "PasswordResetRequested": ("Código para cambiar tu contraseña", _reset_text),
-    "EmailVerificationRequested": ("Tu código de verificación de BarberSaaS", _verification_text),
+def _reset_html(_: str, expires: datetime) -> tuple[str, str, str]:
+    local = expires.astimezone(COLOMBIA)
+    return ("Cambia tu contraseña", "Usa este código en la app para crear tu nueva contraseña:",
+            f"Vence a las {local:%H:%M} del {local:%d/%m/%Y} (hora de Colombia) y solo se puede usar una vez.\n\n"
+            "Si no pediste este cambio, ignora este correo: tu contraseña sigue igual.")
+
+
+def _verification_html(_: str, __: datetime) -> tuple[str, str, str]:
+    return ("Verifica tu correo", "Escribe este código en la app para activar tu cuenta:",
+            "Vence en 15 minutos.\n\nSi no creaste una cuenta en BarberSaaS, ignora este correo.")
+
+
+# event type → (subject, text after the greeting, (title, before the code, after the code) of the HTML)
+_KINDS: dict[str, tuple[str, Callable[[str, datetime], str], Callable[[str, datetime], tuple[str, str, str]]]] = {
+    "PasswordResetRequested": ("Código para cambiar tu contraseña", _reset_text, _reset_html),
+    "EmailVerificationRequested": ("Tu código de verificación de BarberSaaS", _verification_text, _verification_html),
 }
 EVENT_TYPES = frozenset(_KINDS)
 
@@ -64,7 +79,7 @@ def email_address(value: object, field: str) -> str:
 
 def code_email(event_type: str, payload: Mapping) -> CodeEmail:
     """The e-mail of one code event (02-domain/domain-events.md, DEC-AUTH-08, DEC-AUTH-09)."""
-    subject, text = _KINDS[event_type]
+    subject, text, html = _KINDS[event_type]
     try:
         user_id = UUID(_text(payload, "userId"))
     except ValueError:
@@ -81,4 +96,6 @@ def code_email(event_type: str, payload: Mapping) -> CodeEmail:
         raise InvalidEvent("payload.expiresAt", "must carry its offset")
     name = str(payload.get("fullName") or "").strip()
     body = f"Hola{' ' + name if name else ''},\n\n{text(code, expires)}"
-    return CodeEmail(user_id=user_id, to=to, subject=subject, body=body, expires_at=expires)
+    title, before, after = html(code, expires)
+    page = email_layout.render(title, name, before, code=code, after=after)
+    return CodeEmail(user_id=user_id, to=to, subject=subject, body=body, expires_at=expires, html=page)

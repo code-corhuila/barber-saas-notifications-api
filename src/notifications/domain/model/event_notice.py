@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from uuid import UUID
 
+from notifications.domain.model import email_layout
 from notifications.domain.model.code_email import COLOMBIA, email_address
 from notifications.domain.model.errors import InvalidEvent, UnsupportedEvent
 from notifications.domain.model.notification import BODY_MAX, NotificationType
@@ -28,6 +29,9 @@ class Notice:
 
     def email_body(self) -> str:
         return f"Hola{' ' + self.name if self.name else ''},\n\n{self.body}"
+
+    def email_html(self) -> str:
+        return email_layout.render(self.title, self.name, self.body)
 
 
 def _recipient(payload: Mapping, field: str) -> UUID | None:
