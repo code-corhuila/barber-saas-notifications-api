@@ -60,7 +60,7 @@ class EventService:
             self._push.deliver(notification)
             addressed = self._addressed(notice)
             if addressed is not None:
-                self._mail_notice(notification, addressed.email, addressed.email_body())
+                self._mail_notice(notification, addressed.email, addressed.email_body(), addressed.email_html())
         return outcome
 
     def _addressed(self, notice: Notice) -> Notice | None:
@@ -88,12 +88,12 @@ class EventService:
             return None
         return replace(notice, email=to, name=contact.full_name.strip())
 
-    def _mail_notice(self, notification: Notification, to: str, body: str) -> None:
+    def _mail_notice(self, notification: Notification, to: str, body: str, html: str) -> None:
         """DEC-NOTIF-02: best effort, like the push. The inbox already has it, so a failure only logs."""
         if self._email is None:
             return
         try:
-            self._email.send(to, notification.title, body)
+            self._email.send(to, notification.title, body, html=html)
             attempt = DeliveryAttempt(channel=DeliveryChannel.EMAIL, status=DeliveryStatus.SENT,
                                       attempted_at=self._clock.now())
         except Exception as error:  # the mail server is down or refused it
@@ -118,7 +118,7 @@ class EventService:
         if self._processed.seen(event.id):
             return EventOutcome.DUPLICATE
         try:
-            self._email.send(mail.to, mail.subject, mail.body)
+            self._email.send(mail.to, mail.subject, mail.body, html=mail.html)
         except Exception as error:  # the mail server is down or refused it: the worker retries
             log.warning("code e-mail not sent: %s", type(error).__name__)
             raise DeliveryUnavailable("the mail server did not accept the message") from None

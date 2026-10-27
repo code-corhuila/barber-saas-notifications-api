@@ -1,7 +1,8 @@
 """
 SMTP with the standard library (DEC-NOTIF-01). Host, port, user and password come from the
-environment only (SMTP_*), never versioned. One connection per message: the only e-mail today is a
-password-reset code, so there is no traffic to justify a pool.
+environment only (SMTP_*), never versioned. One connection per message: the e-mails are codes and a
+few notices, so there is no traffic to justify a pool. With an HTML version the message is
+multipart/alternative: clients that do not show HTML read the plain text.
 """
 import smtplib
 import ssl
@@ -22,7 +23,7 @@ class SmtpEmailSender:
         self._username, self._password = username, password
         self._security, self._timeout_s = security, timeout_s
 
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, *, html: str = "") -> None:
         message = EmailMessage()
         message["From"] = self._sender
         message["To"] = to
@@ -30,6 +31,8 @@ class SmtpEmailSender:
         message["Date"] = formatdate(localtime=False)
         message["Message-ID"] = make_msgid()
         message.set_content(body)
+        if html:
+            message.add_alternative(html, subtype="html")
         context = ssl.create_default_context()
         if self._security == "ssl":
             server: smtplib.SMTP = smtplib.SMTP_SSL(self._host, self._port, timeout=self._timeout_s, context=context)

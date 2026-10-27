@@ -24,12 +24,14 @@ CODE = "482913"
 class FakeMail:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str, str]] = []
+        self.html: list[str] = []
         self.failing = False
 
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, *, html: str = "") -> None:
         if self.failing:
             raise ConnectionRefusedError("mail server down")
         self.sent.append((to, subject, body))
+        self.html.append(html)
 
 
 def reset(**extra) -> dict:
