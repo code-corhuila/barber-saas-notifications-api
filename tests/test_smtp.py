@@ -84,6 +84,18 @@ def test_the_message_reaches_the_server_with_its_headers_and_text(server):
     assert "482913" in message.get_content()
 
 
+def test_with_html_the_message_is_alternative_plain_text_and_html(server):
+    sender = SmtpEmailSender("127.0.0.1", server.port, "BarberSaaS <no-reply@example.com>", security="none",
+                             timeout_s=3)
+
+    sender.send("ana@example.com", "Tu código", "Tu código es: 482913", html="<p>Tu código es <b>482913</b></p>")
+
+    message = message_from_bytes(server.messages[0][2], policy=policy.default)
+    assert message.get_content_type() == "multipart/alternative"
+    assert "482913" in message.get_body(("plain",)).get_content()
+    assert "<b>482913</b>" in message.get_body(("html",)).get_content()
+
+
 def test_a_refused_message_raises_so_the_event_is_retried():
     server = LocalSmtpServer(reject_data=True)
     sender = SmtpEmailSender("127.0.0.1", server.port, "no-reply@example.com", security="none", timeout_s=3)
