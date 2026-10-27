@@ -31,6 +31,13 @@ class EventService:
         self._contacts = contacts
 
     def receive(self, event: IncomingEvent) -> EventOutcome:
+        outcome = self._handle(event)
+        # The id, type and outcome only: never the payload, an address or a code. The JSON line carries
+        # the worker's X-Correlation-Id, so one event can be followed across both services.
+        log.info("event %s of type %s: %s", event.id, event.type, outcome.value)
+        return outcome
+
+    def _handle(self, event: IncomingEvent) -> EventOutcome:
         if event.type in code_email.EVENT_TYPES:
             return self._send_code(event)
         notices = notices_for(event.type, event.payload)
