@@ -49,6 +49,8 @@ notification: `barber-saas-worker` delivers each domain event to `POST /internal
 | `PasswordResetRequested`, `EmailVerificationRequested` | `payload.email` — **an e-mail with the code, no inbox notification** | — |
 
 A null `clientId` (walk-in) answers `IGNORED`, a redelivered event `DUPLICATE`, another type `422`.
+Each handled event writes one JSON log line (`event <id> of type <type>: <outcome>`) with the
+worker's `X-Correlation-Id` as `correlationId`; never its payload, an address or a code.
 
 **Code e-mails (`DEC-NOTIF-01`, `DEC-NOTIF-02`).** `PasswordResetRequested` and
 `EmailVerificationRequested` send the 6-digit code to
