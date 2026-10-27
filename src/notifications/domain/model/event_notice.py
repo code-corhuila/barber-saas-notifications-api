@@ -74,14 +74,22 @@ def _completed(p: Mapping) -> tuple[NotificationType, str, str]:
     return NotificationType.SYSTEM, "Cita completada", f"Gracias por tu visita. Tu cita {_when(p)} quedó completada."
 
 
+def _named(payload: Mapping, field: str) -> str | None:
+    """An optional name (docs #142): null when its producer could not read it, so the text goes without it."""
+    name = payload.get(field)
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
 def _reminder(p: Mapping) -> tuple[NotificationType, str, str]:
     # Version 1 has no window: it was always the day-before reminder (DEC-APPT-12).
     window = p.get("window") or "DAY_BEFORE"
+    shop = _named(p, "barbershopName")
+    at = f" en {shop}" if shop else ""
     if window == "DAY_BEFORE":
-        return NotificationType.REMINDER, "Recordatorio de cita", f"Recuerda tu cita {_when(p)}."
+        return NotificationType.REMINDER, "Recordatorio de cita", f"Recuerda tu cita{at} {_when(p)}."
     if window != "HOUR_BEFORE":
         raise InvalidEvent("payload.window", "must be one of DAY_BEFORE, HOUR_BEFORE")
-    return NotificationType.REMINDER, "Recordatorio de cita", f"Tu cita es en 1 hora ({_start(p)})."
+    return NotificationType.REMINDER, "Recordatorio de cita", f"Tu cita{at} es en 1 hora ({_start(p)})."
 
 
 def _sticker(_: Mapping) -> tuple[NotificationType, str, str]:
@@ -140,7 +148,8 @@ def _expiring(p: Mapping) -> tuple[str, str]:
     if kind == "TRIAL":
         return "Tu prueba gratis termina pronto", (f"Tu prueba gratis de {shop} termina {left} (el {day}). "
                                                    "Elige un plan en Mi plan para seguir recibiendo reservas.")
-    return "Tu plan vence pronto", (f"Tu plan de {shop} vence {left} (el {day}). "
+    plan = _named(p, "planName")
+    return "Tu plan vence pronto", (f"Tu plan {plan + ' ' if plan else ''}de {shop} vence {left} (el {day}). "
                                     "Paga tu plan en Mi plan para seguir recibiendo reservas.")
 
 
