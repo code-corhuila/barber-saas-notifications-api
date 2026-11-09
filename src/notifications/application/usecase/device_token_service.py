@@ -4,12 +4,15 @@ from uuid import UUID
 
 from notifications.application.port.inbound.device_token_use_cases import Registration
 from notifications.application.port.outbound.clock import Clock
-from notifications.application.port.outbound.device_token_repository import DeviceTokenRepository, IdempotencyRecord
+from notifications.application.port.outbound.device_token_repository import (DeviceTokenRepository, IdempotencyRecord,
+                                                                               TokenTaken)
 from notifications.application.port.outbound.ids import IdGenerator
 from notifications.domain.model.device_token import DeviceToken, Platform
 from notifications.domain.model.errors import IdempotencyConflict
 
 OPERATION = "POST /api/v1/device-tokens"
+# A sign-in can send the same token twice at once: the one that loses the race reads it back and retries.
+ATTEMPTS = 3
 
 
 class DeviceTokenService:
@@ -27,12 +30,19 @@ class DeviceTokenService:
                 raise IdempotencyConflict(idempotency_key)
             return Registration(self._device_tokens.find_by_id(seen.resource_id), created=False)
 
-        now = self._clock.now()
-        existing = self._device_tokens.find_by_token(token)
-        if existing is not None:
-            device = existing.assign(user_id, platform, now)
-        else:
-            device = DeviceToken(id=self._ids.next(), user_id=user_id, token=token, platform=platform,
-                                 created_at=now, updated_at=now)
-        self._device_tokens.save(device, IdempotencyRecord(idempotency_key, OPERATION, device.id, request_hash))
-        return Registration(device, created=existing is None)
+        for attempt in range(1, ATTEMPTS + 1):
+            now = self._clock.now()
+            existing = self._device_tokens.find_by_token(token)
+            if existing is not None:
+                device = existing.assign(user_id, platform, now)
+            else:
+                device = DeviceToken(id=self._ids.next(), user_id=user_id, token=token, platform=platform,
+                                     created_at=now, updated_at=now)
+            try:
+                self._device_tokens.save(device, IdempotencyRecord(idempotency_key, OPERATION, device.id, request_hash))
+            except TokenTaken:
+                if attempt == ATTEMPTS:
+                    raise
+                continue
+            return Registration(device, created=existing is None)
+        raise AssertionError("unreachable")
