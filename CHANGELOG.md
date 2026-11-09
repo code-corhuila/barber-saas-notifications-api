@@ -25,6 +25,7 @@ User stories: code-corhuila/barber-saas-docs#6, code-corhuila/barber-saas-docs#1
 ### Fixed
 
 - **events:** ignore a password-reset event whose code already expired
+- **device-tokens:** answer 200, not 500, when one device registers its token twice at once
 
 ### Documentation
 
@@ -42,6 +43,7 @@ User stories: code-corhuila/barber-saas-docs#6, code-corhuila/barber-saas-docs#1
 - **app:** specify the identity-auth settings of the composition root
 - **events:** specify one info line per handled event, without the payload
 - **events:** specify the plan and barbershop names in the notices, with the text without them as fallback
+- **device-tokens:** specify one document and no error when a device signs in twice at once
 
 ## [2.0.0] - 2026-10-08
 
