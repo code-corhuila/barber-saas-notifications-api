@@ -10,12 +10,13 @@ from pymongo import ASCENDING, DESCENDING, MongoClient, WriteConcern
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
-from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
+from notifications.application.port.outbound.device_token_repository import IdempotencyRecord, TokenTaken
 from notifications.domain.model.device_token import DeviceToken, Platform
 from notifications.domain.model.notification import (MAX_DELIVERY_ATTEMPTS, DeliveryAttempt, Notification,
                                                      NotificationType)
 
 SOURCE_EVENT_INDEX = "uq_notification_source_event"
+DEVICE_TOKEN_INDEX = "uq_device_token_token"
 
 
 def connect(url: str, *, pool_max: int, timeout_ms: int, server_selection_timeout_ms: int) -> MongoClient:
@@ -125,12 +126,21 @@ class MongoDeviceTokenRepository:
         d = device_token
         document = {"userId": str(d.user_id), "token": d.token, "platform": d.platform.value,
                     "createdAt": _utc(d.created_at), "updatedAt": _utc(d.updated_at)}
-        with self._client.start_session() as session:
-            with session.start_transaction():
-                self._devices.replace_one({"_id": str(d.id)}, document, upsert=True, session=session)
-                self._keys.insert_one({"key": key.key, "operation": key.operation, "resourceId": str(key.resource_id),
-                                       "requestHash": key.request_hash, "createdAt": _utc(d.updated_at)},
-                                      session=session)
+        def write(session) -> None:
+            self._devices.replace_one({"_id": str(d.id)}, document, upsert=True, session=session)
+            self._keys.insert_one({"key": key.key, "operation": key.operation, "resourceId": str(key.resource_id),
+                                   "requestHash": key.request_hash, "createdAt": _utc(d.updated_at)},
+                                  session=session)
+
+        try:
+            with self._client.start_session() as session:
+                # with_transaction retries the write conflicts MongoDB labels transient.
+                session.with_transaction(write)
+        except DuplicateKeyError as error:
+            # Two sign-ins of one device at once: the other request stored the token first.
+            if DEVICE_TOKEN_INDEX in str(error.details or error):
+                raise TokenTaken(d.token) from error
+            raise
 
     @staticmethod
     def _device(d: dict) -> DeviceToken:
