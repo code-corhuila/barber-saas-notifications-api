@@ -6,6 +6,10 @@ from uuid import UUID
 from notifications.domain.model.device_token import DeviceToken
 
 
+class TokenTaken(Exception):
+    """Another request saved the same token first: the unique index of device_token refused this one."""
+
+
 @dataclass(frozen=True)
 class IdempotencyRecord:
     """06-data/models.md §10: the key, the operation, the resource it produced and the request hash."""
@@ -30,5 +34,8 @@ class DeviceTokenRepository(Protocol):
     def remove(self, device_token_id: UUID) -> None: ...
 
     def save(self, device_token: DeviceToken, key: IdempotencyRecord) -> None:
-        """The device token and its key in one transaction (norm 5.3.8)."""
+        """The device token and its key in one transaction (norm 5.3.8).
+
+        Raises TokenTaken when a concurrent registration of the same token got there first.
+        """
         ...
