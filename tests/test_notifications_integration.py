@@ -4,6 +4,7 @@ validators and unique indexes). Skipped unless TEST_MONGO_URL is set, e.g.
     TEST_MONGO_URL="mongodb://localhost:27017/?directConnection=true" pytest
 """
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -15,7 +16,9 @@ from tests.conftest import PUBLIC_KEY, bearer, make_token
 
 from notifications.adapter.outbound.persistence.mongo import (MongoDeviceTokenRepository, MongoProcessedEventRepository,
                                                               MongoNotificationRepository, connect)
+from notifications.adapter.outbound.system import RandomIds, UtcClock
 from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
+from notifications.application.usecase.device_token_service import DeviceTokenService
 from notifications.domain.model.device_token import DeviceToken, Platform
 from notifications.domain.model.notification import (DeliveryAttempt, DeliveryChannel, DeliveryStatus, Notification,
                                                      NotificationType)
@@ -171,3 +174,16 @@ def test_a_processed_event_is_seen_and_recording_it_twice_is_harmless(database):
     assert processed.seen(event_id)
     stored = database[1]["processed_event"].find_one({"_id": str(event_id)})
     assert set(stored) == {"_id", "eventType", "processedAt"}
+
+
+def test_one_device_signing_in_twice_at_once_gets_one_document_and_no_error(devices):
+    # The app sends its token twice on sign-in: before, the second write broke uq_device_token_token (500).
+    service = DeviceTokenService(devices, UtcClock(), RandomIds())
+    user, token = uuid4(), f"fcm-{uuid4()}"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        registrations = list(pool.map(lambda n: service.register(user, token, Platform.ANDROID, f"key-race-{uuid4()}"),
+                                      range(8)))
+
+    assert len({r.device_token.id for r in registrations}) == 1
+    assert [d.token for d in devices.tokens_of(user)] == [token]
