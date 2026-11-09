@@ -3,7 +3,7 @@ from datetime import datetime
 from threading import Lock
 from uuid import UUID
 
-from notifications.application.port.outbound.device_token_repository import IdempotencyRecord
+from notifications.application.port.outbound.device_token_repository import IdempotencyRecord, TokenTaken
 from notifications.domain.model.device_token import DeviceToken
 from notifications.domain.model.notification import MAX_DELIVERY_ATTEMPTS, DeliveryAttempt, Notification
 
@@ -74,6 +74,9 @@ class InMemoryDeviceTokenRepository:
 
     def save(self, device_token: DeviceToken, key: IdempotencyRecord) -> None:
         with self._lock:
+            # Same rule as uq_device_token_token: one device per token.
+            if any(d.token == device_token.token and d.id != device_token.id for d in self._by_id.values()):
+                raise TokenTaken(device_token.token)
             self._by_id[device_token.id] = device_token
             self._keys[(key.key, key.operation)] = key
 
