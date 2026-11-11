@@ -41,8 +41,24 @@ def test_an_invalid_token_answers_401(client, token):
 
 
 def test_a_service_token_has_no_inbox(client):
+    # docs#164: the routes of the app take only user tokens; a service token answers 401.
     service = make_token(sub="barber-saas-worker", role="SERVICE")
-    assert_envelope(client.get(INBOX, headers=bearer(service)), 403, "FORBIDDEN")
+    assert_envelope(client.get(INBOX, headers=bearer(service)), 401, "UNAUTHORIZED")
+
+
+@pytest.mark.parametrize("token", [
+    make_token(aud=None),
+    make_token(aud="barber-saas-notifications-api"),
+    make_token(role="SERVICE", sub="barber-saas-worker", aud="barber-saas-app"),
+], ids=["no-audience", "another-audience", "service-with-app-audience"])
+def test_a_token_not_issued_for_the_app_answers_401(client, token):
+    assert_envelope(client.get(INBOX, headers=bearer(token)), 401, "UNAUTHORIZED")
+
+
+def test_the_user_token_identity_auth_issues_opens_the_inbox(client):
+    # Every user token of identity-auth names barber-saas-app (identity-auth-api #39), as one string or a list.
+    assert client.get(INBOX, headers=bearer(make_token(aud="barber-saas-app"))).status_code == 200
+    assert client.get(INBOX, headers=bearer(make_token(aud=["barber-saas-app", "x"]))).status_code == 200
 
 
 # ─── Error envelope and correlation (norms 5.3.5, 5.3.9) ─────────────────────
