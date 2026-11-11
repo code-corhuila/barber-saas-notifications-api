@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] - 2026-11-05
 
-User stories: code-corhuila/barber-saas-docs#6, code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs#128, code-corhuila/barber-saas-docs#131
+User stories: code-corhuila/barber-saas-docs#6, code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs#128, code-corhuila/barber-saas-docs#131, code-corhuila/barber-saas-docs#158, code-corhuila/barber-saas-docs#159, code-corhuila/barber-saas-docs#164
 
 ### Added
 
@@ -26,6 +26,12 @@ User stories: code-corhuila/barber-saas-docs#6, code-corhuila/barber-saas-docs#1
 
 - **events:** ignore a password-reset event whose code already expired
 - **device-tokens:** answer 200, not 500, when one device registers its token twice at once
+- **auth:** accept the tokens identity-auth issues with an audience instead of refusing every one that names it
+
+### Security
+
+- **auth:** take only user tokens issued for the app on the routes of the app, and answer 401 to a service token
+- **auth:** deliver events only with the worker's token for notifications, its events:deliver scope and at most 7 days
 
 ### Documentation
 
