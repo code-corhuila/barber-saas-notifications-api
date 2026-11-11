@@ -87,7 +87,8 @@ def test_malformed_json_answers_400(client):
 def test_a_service_token_registers_no_device(client):
     headers = {**bearer(make_token(sub="barber-saas-worker", role="SERVICE")), "Idempotency-Key": "key-00000001"}
 
-    assert client.post(TOKENS, json=BODY, headers=headers).status_code == 403
+    # docs#164: the routes of the app take only user tokens; a service token answers 401.
+    assert client.post(TOKENS, json=BODY, headers=headers).status_code == 401
 
 
 def test_without_a_token_registration_answers_401(client):

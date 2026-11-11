@@ -3,8 +3,13 @@ Each service validates the token itself (authentication.md, norm 5.3.7): the gat
 that a credential is present, and internal calls never pass through it. Same rules as the Java
 services' Rs256Verifier: exactly RS256 with the identity public key, exp and sub required, the
 identity issuer, and the role the operation needs.
+
+The audience is checked by route, not by PyJWT (07-api/authentication.md, validation steps 4 and 5):
+the routes of the app take only user tokens issued for the app (docs#164), and the internal
+operation takes only the worker's token meant for this service with the scope it grants (docs#158,
+docs#159). PyJWT alone would refuse every token that carries an `aud`, which every token does.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import jwt
@@ -16,6 +21,9 @@ ISSUER = "barber-saas-identity-auth-api"
 USER_ROLES = frozenset({"SUPER_ADMIN", "ADMIN_BARBERSHOP", "BARBER", "CLIENT"})
 SERVICE_ROLE = "SERVICE"
 LEEWAY_SECONDS = 30
+APP_AUDIENCE = "barber-saas-app"
+SERVICE_AUDIENCE = "barber-saas-notifications-api"
+SERVICE_TOKEN_MAX_SECONDS = 7 * 24 * 3600
 
 
 class InvalidToken(Exception):
@@ -29,6 +37,18 @@ class Caller:
     sub: str
     role: str
     barbershop_id: str | None
+    audience: frozenset[str] = field(default_factory=frozenset)
+    scopes: frozenset[str] = field(default_factory=frozenset)
+    lifetime_seconds: int | None = None
+
+
+def _names(aud) -> frozenset[str]:
+    """`aud` is one string or a list of strings (RFC 7519, 4.1.3)."""
+    if isinstance(aud, str):
+        return frozenset({aud})
+    if isinstance(aud, list):
+        return frozenset(a for a in aud if isinstance(a, str))
+    return frozenset()
 
 
 class Rs256Verifier:
@@ -45,13 +65,18 @@ class Rs256Verifier:
             if jwt.get_unverified_header(token).get("alg") != "RS256":
                 raise InvalidToken("algorithm not allowed")
             claims = jwt.decode(token, self._key, algorithms=["RS256"], issuer=ISSUER, leeway=LEEWAY_SECONDS,
-                                options={"require": ["exp", "sub", "iss"]})
+                                options={"require": ["exp", "sub", "iss"], "verify_aud": False})
         except jwt.PyJWTError as error:
             raise InvalidToken(str(error)) from error
         role = claims.get("role")
         if role not in USER_ROLES and role != SERVICE_ROLE:
             raise InvalidToken("unknown role")
-        return Caller(sub=claims["sub"], role=role, barbershop_id=claims.get("barbershopId"))
+        scope = claims.get("scope")
+        iat = claims.get("iat")
+        return Caller(sub=claims["sub"], role=role, barbershop_id=claims.get("barbershopId"),
+                      audience=_names(claims.get("aud")),
+                      scopes=frozenset(scope.split()) if isinstance(scope, str) else frozenset(),
+                      lifetime_seconds=int(claims["exp"]) - int(iat) if isinstance(iat, (int, float)) else None)
 
 
 def _caller(request: Request) -> Caller:
@@ -68,6 +93,9 @@ def _caller(request: Request) -> Caller:
 def current_user(request: Request) -> UUID:
     """A user of any role: their id, the only key of their inbox. A service has no inbox."""
     caller = _caller(request)
+    # docs#164: the routes of the app take only user tokens issued for the app; a service token is 401.
+    if caller.role == SERVICE_ROLE or APP_AUDIENCE not in caller.audience:
+        raise ApiError.unauthorized("The authentication token is not valid")
     if caller.role not in USER_ROLES:
         raise ApiError.forbidden()
     try:
@@ -76,11 +104,18 @@ def current_user(request: Request) -> UUID:
         raise ApiError.unauthorized("The authentication token is not valid") from None
 
 
-def service(expected_sub: str):
-    """An internal operation: only the service token whose sub is expected; a user's token is 403."""
+def service(expected_sub: str, scope: str):
+    """
+    An internal operation: only the service token whose sub is expected, meant for this service
+    (`aud`, docs#158), living at most 7 days and granting `scope` (docs#159). Anything else is 403.
+    """
     def check(request: Request) -> Caller:
         caller = _caller(request)
         if caller.role != SERVICE_ROLE or caller.sub != expected_sub:
+            raise ApiError.forbidden()
+        if SERVICE_AUDIENCE not in caller.audience or scope not in caller.scopes:
+            raise ApiError.forbidden()
+        if caller.lifetime_seconds is None or caller.lifetime_seconds > SERVICE_TOKEN_MAX_SECONDS:
             raise ApiError.forbidden()
         return caller
     return check

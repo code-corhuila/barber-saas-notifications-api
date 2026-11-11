@@ -16,6 +16,7 @@ from notifications.domain.model.device_token import Platform
 router = APIRouter()
 User = Annotated[UUID, Depends(current_user)]
 WORKER = "barber-saas-worker"
+DELIVER_SCOPE = "events:deliver"
 
 
 def _notifications(request: Request) -> NotificationUseCases:
@@ -52,7 +53,7 @@ def register_device_token(request: Request, user: User, body: RegisterDeviceToke
     return JSONResponse(status_code=200, content=view)
 
 
-@router.post("/internal/v1/events", dependencies=[Depends(service(WORKER))])
+@router.post("/internal/v1/events", dependencies=[Depends(service(WORKER, DELIVER_SCOPE))])
 def receive_event(request: Request, event: EventEnvelopeBody) -> dict:
     outcome = request.app.state.services.events.receive(
         IncomingEvent(id=event.id, type=event.type, barbershop_id=event.barbershopId, payload=event.payload))
