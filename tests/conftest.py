@@ -48,8 +48,12 @@ class FixedClock:
 
 def make_token(sub: str | None = str(ANA), role: str = "CLIENT", *, key: str | None = PRIVATE_KEY,
                alg: str = "RS256", expires_in: timedelta = timedelta(hours=1), **claims) -> str:
+    """A token shaped as identity-auth issues it: a user's names the app; the worker's names this service
+    and its scope (07-api/authentication.md). Pass aud=None or scope=None to leave the claim out."""
     now = datetime.now(timezone.utc)
-    body = {"sub": sub, "role": role, "iss": ISSUER, "iat": now, "exp": now + expires_in, **claims}
+    shape = ({"aud": "barber-saas-notifications-api", "scope": "events:deliver"} if role == "SERVICE"
+             else {"aud": "barber-saas-app"})
+    body = {"sub": sub, "role": role, "iss": ISSUER, "iat": now, "exp": now + expires_in, **shape, **claims}
     return jwt.encode({k: v for k, v in body.items() if v is not None}, key, algorithm=alg)
 
 
