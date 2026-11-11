@@ -1,4 +1,5 @@
 """POST /internal/v1/events (ADR-016): at most one notification per event, only from the worker."""
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -120,6 +121,29 @@ def test_only_the_worker_delivers_events(client, notifications, token):
 
     assert response.status_code == 403 and response.json()["error"] == "FORBIDDEN"
     assert inbox(notifications) == []
+
+
+@pytest.mark.parametrize("token", [
+    make_token(sub="barber-saas-worker", role="SERVICE", aud=None),
+    make_token(sub="barber-saas-worker", role="SERVICE", aud="barber-saas-loyalty-api"),
+    make_token(sub="barber-saas-worker", role="SERVICE", scope=None),
+    make_token(sub="barber-saas-worker", role="SERVICE", scope="outbox:relay subscriptions:expire"),
+    make_token(sub="barber-saas-worker", role="SERVICE", expires_in=timedelta(days=8)),
+], ids=["no-audience", "another-service-audience", "no-scope", "another-scope", "longer-than-7-days"])
+def test_a_worker_token_not_meant_for_this_delivery_answers_403(client, notifications, token):
+    # docs#158, docs#159: a worker token leaked from another call cannot deliver here.
+    response = deliver(client, envelope("AppointmentConfirmed", appointment()), token)
+
+    assert response.status_code == 403 and response.json()["error"] == "FORBIDDEN"
+    assert inbox(notifications) == []
+
+
+def test_the_worker_token_may_name_several_audiences(client, notifications):
+    token = make_token(sub="barber-saas-worker", role="SERVICE",
+                       aud=["barber-saas-loyalty-api", "barber-saas-notifications-api"])
+
+    assert deliver(client, envelope("AppointmentConfirmed", appointment()), token).status_code == 200
+    assert len(inbox(notifications)) == 1
 
 
 def test_without_a_token_an_event_answers_401(client):
